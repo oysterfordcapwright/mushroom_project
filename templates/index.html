@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <!-- Your original HTML content goes here, but remove the style section -->
+    <!-- I've removed the CSS for brevity - it will be in style.css -->
+    
+    <div class="sensor-data">
+        <!-- ... sensor data HTML ... -->
+        <div class="sensor-item">
+            <div class="sensor-value">X degrees C</div>
+            <div class="sensor-label">Temperature</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value">X %</div>
+            <div class="sensor-label">Humidity</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="co2-ppm">X ppm</div>
+            <div class="sensor-label">CO2 Level</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value">X Days X Hours</div>
+            <div class="sensor-label">Growth Time</div>
+        </div>         
+    </div>
+    
+    <div class="dashboard">
+        <!-- ... dashboard HTML ... -->
+
+        <div class="card">
+            <h2>Camera Controls</h2>
+            <button onclick="fetchClip()">Record Growth Clip</button>
+            <button onclick="fetch('/toggle_tl')">Toggle Timelapse</button>
+            <button onclick="fetch('/restart_tl')">Restart Timelapse</button>
+            <div class="status" id="tl-status">Number of timelapse photos ...</div>
+        </div>
+             
+            
+        <div class="card">
+            <h2>Environment</h2>
+            <button onclick="fetch('/adjust_temp')">Adjust Temperature</button>
+            <button onclick="fetch('/adjust_humidity')">Adjust Humidity</button>
+            <button onclick="fetch('/toggle_fan')">Toggle Air Circulation</button>
+            <button onclick="fetch('/toggle_light')">Toggle Grow Lights</button>
+            <button onclick="fetch('/set_light_schedule')">Set Light Schedule</button>
+            <div class="status" id="env-status">Stable</div>
+        </div>
+        
+        <!--
+        <div class="card">
+            <h2>Lighting</h2>
+            <button onclick="fetch('/toggle_light')">Toggle Grow Lights</button>
+            <button onclick="fetch('/set_light_schedule')">Set Light Schedule</button>
+            <div class="status" id="light-status">Off</div>
+        </div>
+        -->
+        
+        <div class="card">
+            <h2>System</h2>
+            <button class="warning" onclick="fetch('/emergency_stop')">Emergency Stop</button>
+            <button onclick="fetch('/update_settings')">Update Settings</button>
+            <button onclick="fetch('/view_logs')">View System Logs</button>
+        </div>
+        
+        <div class="card">
+            <h2>Google Drive</h2>
+            <button onclick="fetch('/upload_tl')">Upload Time Lapse</button>
+            <button onclick="fetch('/upload_logs_drive')">Upload Logs</button>
+        </div>
+        
+        {% if not current_user.is_admin %}
+        <div class="card">
+            <h2>Notice</h2>
+            <p>You are viewing in read-only mode. Admin access required for controls.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="webcam-container">
+        <h2>Latest Webcam Image</h2>
+        <img id="webcam" src="/send_latest_image" class="latest-img"/>
+        <button onclick="refreshManual()">Take New Photo</button>
+        <div class="status" id="photo-status"></div>
+    </div>
+    
+    <!-- ... the rest of your HTML ... -->
+    
+    <script>
+        // Your JavaScript code remains the same
+        async function fetchClip() {
+            document.getElementById('camera-status').innerText = "Recording clip...";
+            const res = await fetch('/take_clip');
+            const text = await res.text();
+            document.getElementById('camera-status').innerText = text;
+        }
+        
+
+        async function updateSensorData() {
+            try {
+                const res = await fetch('/co2_sensor');
+                const data = await res.json();
+                document.getElementById('co2-ppm').innerText = data.co2 + " ppm";
+            } catch (err) {
+                console.error("Error fetching CO2 data:", err);
+            }
+        }
+        
+        async function updateImage() {
+            const img = document.getElementById('webcam');
+            img.src = '/send_latest_image?t=' + new Date().getTime();  // bust cache
+
+            document.getElementById('photo-status').innerText = "Photo updated according to time stamp"; 
+        }
+        
+        async function refreshManual() {
+            document.getElementById('photo-status').innerText = "Capturing photo...";
+            try {
+                const res = await fetch('/take_photo');
+                const data = await res.json();
+                if (data.success) {updateImage()}
+            } catch (err) {console.error("Error taking image:", err);}
+        }
+        
+    
+        async function updateTimelapseStatus() {
+            try {
+                const res = await fetch('/timelapse_status');
+                if (!res.ok) throw new Error("Failed to fetch timelapse status");
+                const data = await res.json();
+
+                document.getElementById("tl-status").innerText =
+                  `Timelapse start: ${data.start_timestamp} 
+                  Number of timelapse photos: ${data.iterations} (last at ${data.last_timestamp || "N/A"})`;
+              } catch (err) {
+                console.error(err);
+                document.getElementById("tl-status").innerText =
+                  "Error loading timelapse status";
+              }
+            }
+
+            // Call it once on page load
+            updateTimelapseStatus();
+
+            // Optionally refresh every few seconds
+            setInterval(updateTimelapseStatus, 5000);
+        
+        setInterval(updateSensorData, 5000);
+        updateSensorData(); // call once at page load
+        
+        setInterval(updateImage, 2000);
+
+        // Add this to your JavaScript section
+        document.addEventListener('DOMContentLoaded', function() {
+            // Disable buttons for non-admin users
+            {% if not current_user.is_admin %}
+            const adminButtons = document.querySelectorAll('button');
+            adminButtons.forEach(button => {
+                if (button.onclick && button.onclick.toString().includes('fetch')) {
+                    button.disabled = true;
+                    button.classList.add('admin-only');
+                    button.title = "Admin access required";
+                }
+            });
+            {% endif %}
+        });
+    </script>
+{% endblock %}

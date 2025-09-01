@@ -2,17 +2,17 @@ import cv2
 import time
 import os
 from datetime import datetime
-from threading import Lock
+from threading import Lock, Event 
 
 # === Settings ===
 TIME_LAP_DIR = "/home/luke/Pictures/Timelapse Images"
 CURR_IMG_DIR = "/home/luke/Pictures/Latest Image"
-TIM_LAP_INTERVAL = 120           # Time (s) between photos (10min)
+DEF_TIM_LAP_INTERVAL = 8           # Time (s) between photos (10min)
 CAM_INDEX = 0                   # Usually 0, change if you have multiple cameras
 LATEST_IMG = "latest.jpg"
 RESOLUTION_W = 1920
 RESOLUTION_H = 1080
-MAX_RETRIES = 3                 # Number of retries for failed captures
+MAX_RETRIES = 4                 # Number of retries for failed captures
 RETRY_DELAY = 1                # Seconds to wait between retries
 
 # Overlay timestamp onto the image
@@ -24,10 +24,19 @@ def POSITION(frame): return (10, frame.shape[0] - 10)  # bottom-left corner
 
 # For sharing data between threads
 timelapse_data = {
+    "status": None,
     "iterations": 0,
     "last_timestamp": None,
     "start_timestamp": None,
+    "interval": DEF_TIM_LAP_INTERVAL
 }
+
+
+# New: Pause flag
+pause_event = Event()
+pause_event.clear()  # not paused at start
+
+
 data_lock = Lock()
 
 
@@ -103,18 +112,41 @@ def update_latest_img(frame):
     return True    
         
         
-    
+def toggle_timelapse():
+    """Toggle between paused and running"""
+    if pause_event.is_set():
+        pause_event.clear()
+        print("Timelapse resumed.")
+        with data_lock:
+            timelapse_data["status"] = "running"
+        return "running"
+    else:
+        pause_event.set()
+        print("Timelapse paused.")
+        with data_lock:
+            timelapse_data["status"] = "paused"
+        return "paused"
+
+def set_tl_interval(time_s):
+    with data_lock:
+        timelapse_data["interval"] = time_s
+
+
 def run_timelapse():
     
     intial_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     with data_lock:
         timelapse_data["start_timestamp"] = intial_timestamp
+        timelapse_data["status"] = "running"
         
     print(f"Timelapse running")
     try:
         while True:
 
+            while pause_event.is_set():
+                time.sleep(1)
+            
             frame = capture_img()
             
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -134,7 +166,7 @@ def run_timelapse():
                 timelapse_data["last_timestamp"] = timestamp
 
             # Wait before next capture
-            time.sleep(TIM_LAP_INTERVAL)
+            time.sleep(timelapse_data["interval"])
 
             
     except KeyboardInterrupt:

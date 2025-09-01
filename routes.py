@@ -1,5 +1,5 @@
 # routes.py
-from flask import Blueprint, render_template, jsonify, send_from_directory, current_app
+from flask import Blueprint, render_template, jsonify, send_from_directory, current_app, request
 from flask_login import login_required, current_user
 from functools import wraps
 from datetime import datetime
@@ -8,7 +8,7 @@ import subprocess
 import ffmpeg
 
 from CO2_sensor import read_all 
-from AUSDOM_cam import run_timelapse, update_latest_img, capture_img, data_lock, timelapse_data
+from AUSDOM_cam import update_latest_img, capture_img, data_lock, timelapse_data, toggle_timelapse, set_tl_interval
 from DS18B20 import get_DS_temp
 
 bp = Blueprint('main', __name__)
@@ -107,17 +107,19 @@ def timelapse_status():
 @bp.route('/toggle_tl')
 @admin_required
 def toggle_tl():
-    return " coming soon!"
+    return toggle_timelapse()
     
 @bp.route('/restart_tl')
 @admin_required
 def restart_tl():
     return " coming soon!"
     
-@bp.route('/set_tl_rate')
+@bp.route('/set_tl_rate/<int:interval>', methods=['POST'])  # Add methods if using POST
 @admin_required
-def set_tl_rate():
-    return " coming soon!"
+def set_tl_rate(interval):
+    # Now 'interval' is passed directly as a parameter to your function
+    set_tl_interval(interval)
+    return jsonify({"status": "success", "interval": interval})
 
 @bp.route('/adjust_temp')
 @admin_required

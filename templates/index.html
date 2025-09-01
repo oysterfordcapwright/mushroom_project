@@ -30,8 +30,15 @@
 
         <div class="card">
             <h2>Camera Controls</h2>
-            <button onclick="fetchClip()">Record Growth Clip</button>
-            <button onclick="fetch('/toggle_tl')">Toggle Timelapse</button>
+            <!--<button onclick="fetchClip()">Record Growth Clip</button>-->
+            
+            <!-- Interval input box -->
+            <div class="parameter-item">
+                <span class="parameter-label">Timelapse Interval</span>
+                <input type="text" class="parameter-input" id="timelapse-interval" value="">
+            </div>
+
+            <button onclick="toggleTimelapse()" id="toggle-btn">Toggle Timelapse</button>
             <button onclick="fetch('/restart_tl')">Restart Timelapse</button>
             <div class="status" id="tl-status">Number of timelapse photos ...</div>
         </div>
@@ -39,11 +46,17 @@
             
         <div class="card">
             <h2>Environment</h2>
-            <button onclick="fetch('/adjust_temp')">Adjust Temperature</button>
-            <button onclick="fetch('/adjust_humidity')">Adjust Humidity</button>
-            <button onclick="fetch('/toggle_fan')">Toggle Air Circulation</button>
-            <button onclick="fetch('/toggle_light')">Toggle Grow Lights</button>
-            <button onclick="fetch('/set_light_schedule')">Set Light Schedule</button>
+
+            <div class="parameter-item">
+                <span class="parameter-label">Set Temperature</span>
+                <input type="text" class="parameter-input" id="temperature-setpoint" value="">
+            </div>
+
+            <button onclick="fetch('/set_temp')">Set Temperature</button>
+            <button onclick="fetch('/set_humidity')">Set Humidity</button>
+            <button onclick="fetch('/set_CO2')">Set CO2 Level</button>
+            <button onclick="fetch('/set_light_schedule')">Light Schedule</button>
+            <button onclick="fetch('/set_light_wavelength')">Light Wavelengths</button>
             <div class="status" id="env-status">Stable</div>
         </div>
         
@@ -68,7 +81,13 @@
             <button onclick="fetch('/upload_tl')">Upload Time Lapse</button>
             <button onclick="fetch('/upload_logs_drive')">Upload Logs</button>
         </div>
+
+        <button class="save-btn" id="save-button" disabled>Save Changes</button>
+
+        <div class="status-message" id="unsaved-message">You have unsaved changes</div>
+        <div class="status-message status-saved" id="saved-message">Changes saved successfully!</div>
         
+
         {% if not current_user.is_admin %}
         <div class="card">
             <h2>Notice</h2>
@@ -87,39 +106,255 @@
     <!-- ... the rest of your HTML ... -->
     
     <script>
-        // Your JavaScript code remains the same
-        async function fetchClip() {
-            document.getElementById('camera-status').innerText = "Recording clip...";
-            const res = await fetch('/take_clip');
-            const text = await res.text();
-            document.getElementById('camera-status').innerText = text;
-        }
+
+        //Globals
+        let tlData = null;
+        let CO2Data = null;
+        let tempData = null;
+
+        // Your JavaScript code 
+        // Control paramters
+
+        // const externalConfig = {
+        //     "timelapseInterval": 30,
+        //     "temperatureSetpoint": 22.5
+        // };
         
-        async function updateTempSensorData() {
+        // Track original values and changed status
+        const originalValues = {};
+        const changedInputs = new Set();
+
+
+        async function get_env_parameters() {
             try {
-                const res = await fetch('/DS18B20_sensor');
-                const data = await res.json();
+                // Fetch CO2 sensor data
+                let res = await fetch('/co2_sensor');
+                CO2Data = await res.json();
 
-                // Example: show Probe1 in an element with id="ds-temp"
-                document.getElementById('ds-temp1').innerText = data.Probe1 + " C";
-                // Example: show Probe2 in a different element
-                document.getElementById('ds-temp2').innerText = data.Probe2 + " C";
-
+                // Fetch temperature sensor data
+                res = await fetch('/DS18B20_sensor');
+                tempData = await res.json();
+                
+                console.log("Environment parameters updated:");
+                updateUIWithSensorData();
+                
             } catch (err) {
-                console.error("Error fetching temperature data:", err);
+                console.error("Error fetching data:", err);
             }
         }
 
-        async function updateCO2SensorData() {
+        async function get_control_parameters() {
             try {
-                const res = await fetch('/co2_sensor');
-                const data = await res.json();
-                document.getElementById('co2-ppm').innerText = data.co2 + " ppm";
+                // Fetch timelapse status
+                let res = await fetch('/timelapse_status');
+                tlData = await res.json();
+                
+                console.log("Control parameters updated:");
+                updateUIWithControlData();
+                
             } catch (err) {
-                console.error("Error fetching CO2 data:", err);
+                console.error("Error fetching data:", err);
             }
         }
+
+        function initializeOriginalValues() {
+            if (tlData && tlData.interval !== undefined) {
+                originalValues['timelapse-interval'] = tlData.interval;
+            }
+        }   
+
+        function updateUIWithControlData(){
+            if (tlData){
+                document.getElementById("timelapse-interval").value = tlData.interval;
+            }
+        }
+
+        function updateUIWithSensorData() {
+            if (CO2Data && tempData) {
+                // Update your UI elements with the fetched data
+                //document.getElementById('timelapse-status').textContent = tlData.status;
+                document.getElementById('co2-ppm').innerText = CO2Data.co2 + " ppm";
+                document.getElementById('ds-temp1').innerText = tempData.Probe1 + " C";
+                document.getElementById('ds-temp2').innerText = tempData.Probe2 + " C";
+
+            }
+        }
+
+        setInterval(get_env_parameters, 5000);
+        //setInterval(updateUIWithSensorData, 5000);
+
+        get_env_parameters();
+        //updateUIWithSensorData();
+
+        setInterval(get_control_parameters, 5000);
+        //setInterval(updateUIWithControlData, 5000);
+
+        get_control_parameters();
+        //updateUIWithControlData();
+
+        initializeOriginalValues();
         
+
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait for data to load before setting up event listeners
+            setTimeout(() => {
+                // Add event listeners to all parameter inputs
+                const parameterInputs = document.querySelectorAll('.parameter-input');
+                parameterInputs.forEach(input => {
+                    input.addEventListener('input', handleInputChange);
+                });
+
+                // Add event listener to save button
+                const saveButton = document.getElementById('save-button');
+                if (saveButton) {
+                    saveButton.addEventListener('click', saveChanges);
+                }
+                
+                // Disable buttons for non-admin users
+                {% if not current_user.is_admin %}
+                const adminButtons = document.querySelectorAll('button');
+                adminButtons.forEach(button => {
+                    if (button.onclick && button.onclick.toString().includes('fetch')) {
+                        button.disabled = true;
+                        button.classList.add('admin-only');
+                        button.title = "Admin access required";
+                    }
+                });
+                {% endif %}
+            }, 1000); // Wait 1 second for initial data to load
+        });
+
+        function handleInputChange(event) {
+            const input = event.target;
+            const inputId = input.id;
+            
+            // Check if value has changed from original
+            if (input.value != originalValues[inputId]) {
+                input.classList.add('unsaved');
+                changedInputs.add(inputId);
+            } else {
+                input.classList.remove('unsaved');
+                changedInputs.delete(inputId);
+            }
+            
+            // Enable/disable save button based on whether there are changes
+            const saveButton = document.getElementById('save-button');
+            saveButton.disabled = changedInputs.size === 0;
+            
+            // Show/hide unsaved changes message
+            const unsavedMessage = document.getElementById('unsaved-message');
+            unsavedMessage.style.display = changedInputs.size > 0 ? 'block' : 'none';
+        }
+
+        async function saveChanges() {
+            
+            // Just update the original values
+            changedInputs.forEach(inputId => {
+                const input = document.getElementById(inputId);
+                originalValues[inputId] = input.value;
+                
+                // Remove unsaved styling
+                input.classList.remove('unsaved');
+            });
+            
+            // Clear changed inputs
+            changedInputs.clear();
+            
+            // Disable save button
+            document.getElementById('save-button').disabled = true;
+            
+            // Hide unsaved message, show saved message
+            document.getElementById('unsaved-message').style.display = 'none';
+            const savedMessage = document.getElementById('saved-message');
+            savedMessage.style.display = 'block';
+            
+            // Hide saved message after 3 seconds
+            setTimeout(() => {
+                savedMessage.style.display = 'none';
+            }, 3000);
+            
+
+        try {
+            if (originalValues['timelapse-interval']) {
+                await setTimelapseInterval(originalValues['timelapse-interval']);
+            }
+            
+            // Add calls to other set functions here for other parameters
+            // if (originalValues['temperature-setpoint']) {
+            //     await setTemperature(originalValues['temperature-setpoint']);
+            // }
+            
+            console.log("All changes saved successfully");
+            
+        } catch (error) {
+            // Handle any errors that occurred during saving
+            console.error("Error saving changes:", error);
+            
+            // You might want to revert the UI changes or show an error message
+            showErrorNotification("Failed to save some changes");
+        }
+        }
+
+        // Simulated function to periodically check for external updates
+        // function checkForExternalUpdates() {
+            // In a real application, this would fetch from an API or file
+            // console.log("Checking for external updates...");
+            
+            // For demonstration, we'll just randomly decide if there's an update
+            // if (Math.random() > 0.7) {
+                // Simulate an external change
+                // const newValue = Math.floor(Math.random() * 60) + 1;
+                // externalConfig.timelapseInterval = newValue;
+                
+                // Update the input if it hasn't been changed by the user
+                // if (!changedInputs.has('timelapse-interval')) {
+        //             document.getElementById('timelapse-interval').value = newValue;
+        //             originalValues['timelapse-interval'] = newValue;
+        //             console.log("External update applied: Timelapse Interval =", newValue);
+        //         }
+        //     }
+        // }
+
+        
+
+        // Check for external updates every 10 seconds
+        // setInterval(checkForExternalUpdates, 10000);
+        
+        // async function fetchClip() {
+        //     document.getElementById('camera-status').innerText = "Recording clip...";
+        //     const res = await fetch('/take_clip');
+        //     const text = await res.text();
+        //     document.getElementById('camera-status').innerText = text;
+        // }
+
+
+        async function setTimelapseInterval(intervalValue) {
+            intervalValue = Number(intervalValue); // ensure it's numeric
+
+            if (isNaN(intervalValue) || intervalValue <= 0) {
+                throw new Error("Invalid interval value. Must be a positive number.");
+            }
+
+            try {
+                const response = await fetch(`/set_tl_rate/${intervalValue}`, {method: 'POST'});
+
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                console.log("Timelapse interval set successfully:", result);
+                return result;
+
+            } catch (error) {
+                console.error("Failed to set timelapse interval:", error);
+                showErrorNotification(`Failed to set interval: ${error.message}`);
+                throw error;
+            }
+        }
+
+
         async function updateImage() {
             const img = document.getElementById('webcam');
             img.src = '/send_latest_image?t=' + new Date().getTime();  // bust cache
@@ -139,48 +374,42 @@
     
         async function updateTimelapseStatus() {
             try {
-                const res = await fetch('/timelapse_status');
-                if (!res.ok) throw new Error("Failed to fetch timelapse status");
-                const data = await res.json();
 
-                document.getElementById("tl-status").innerText =
-                  `Timelapse start: ${data.start_timestamp} 
-                  Number of timelapse photos: ${data.iterations} (last at ${data.last_timestamp || "N/A"})`;
+                // Choose color based on status
+                const isRunning = tlData.status.toLowerCase().includes("running");
+                const statusColor = isRunning ? "darkgreen" : "orange";
+
+                document.getElementById("tl-status").innerHTML = `
+                    <div>
+                    Timelapse status: 
+                    <span style="font-weight:bold; color:${statusColor};">${tlData.status}</span><br>
+                    Started: ${tlData.start_timestamp}<br>
+                    Number of photos: ${tlData.iterations}<br>
+                    Current: ${tlData.last_timestamp || "N/A"}
+                    </div>
+                `;
+                
               } catch (err) {
                 console.error(err);
                 document.getElementById("tl-status").innerText =
                   "Error loading timelapse status";
               }
         }
-
-        // Call it once on page load
-        updateTimelapseStatus();
+                
+        async function toggleTimelapse() {
+            try {
+                const res = await fetch('/toggle_tl');
+                get_control_parameters();
+                // updateTimelapseStatus();
+            } catch (err) {
+                console.error("Error toggling timelapse:", err);
+            }
+        }
 
         // Optionally refresh every few seconds
         setInterval(updateTimelapseStatus, 5000);
+        setInterval(updateImage, 6000);
         
-
-        setInterval(updateTempSensorData,5000);
-        setInterval(updateCO2SensorData, 5000);
-        
-        updateTempSensorData();
-        updateCO2SensorData(); // call once at page load
-        
-        setInterval(updateImage, 2000);
-
-        // Add this to your JavaScript section
-        document.addEventListener('DOMContentLoaded', function() {
-            // Disable buttons for non-admin users
-            {% if not current_user.is_admin %}
-            const adminButtons = document.querySelectorAll('button');
-            adminButtons.forEach(button => {
-                if (button.onclick && button.onclick.toString().includes('fetch')) {
-                    button.disabled = true;
-                    button.classList.add('admin-only');
-                    button.title = "Admin access required";
-                }
-            });
-            {% endif %}
-        });
+        updateTimelapseStatus();
     </script>
 {% endblock %}

@@ -7,7 +7,7 @@ from threading import Lock
 # === Settings ===
 TIME_LAP_DIR = "/home/luke/Pictures/Timelapse Images"
 CURR_IMG_DIR = "/home/luke/Pictures/Latest Image"
-TIM_LAP_INTERVAL = 8           # Time (s) between photos (10min)
+TIM_LAP_INTERVAL = 120           # Time (s) between photos (10min)
 CAM_INDEX = 0                   # Usually 0, change if you have multiple cameras
 LATEST_IMG = "latest.jpg"
 RESOLUTION_W = 1920

@@ -8,7 +8,8 @@ import subprocess
 import ffmpeg
 
 from CO2_sensor import read_all 
-from timelapse import run_timelapse, update_latest_img, capture_img, data_lock, timelapse_data
+from AUSDOM_cam import run_timelapse, update_latest_img, capture_img, data_lock, timelapse_data
+from DS18B20 import get_DS_temp
 
 bp = Blueprint('main', __name__)
 
@@ -36,6 +37,13 @@ def take_clip():
     except subprocess.CalledProcessError:
         return "Error: Could not take clip or upload."
         
+@bp.route('/DS18B20_sensor')
+@login_required
+def DS18B20_sensor():
+    temps = get_DS_temp()
+    return temps
+
+
 @bp.route('/co2_sensor')
 @login_required
 def co2_sensor():

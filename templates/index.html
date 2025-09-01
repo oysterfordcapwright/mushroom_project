@@ -7,7 +7,8 @@
     <div class="sensor-data">
         <!-- ... sensor data HTML ... -->
         <div class="sensor-item">
-            <div class="sensor-value">X degrees C</div>
+            <div class="sensor-value" id="ds-temp1">X degrees C</div>
+            <div class="sensor-value" id="ds-temp2">X degrees C</div>
             <div class="sensor-label">Temperature</div>
         </div>
         <div class="sensor-item">
@@ -94,8 +95,22 @@
             document.getElementById('camera-status').innerText = text;
         }
         
+        async function updateTempSensorData() {
+            try {
+                const res = await fetch('/DS18B20_sensor');
+                const data = await res.json();
 
-        async function updateSensorData() {
+                // Example: show Probe1 in an element with id="ds-temp"
+                document.getElementById('ds-temp1').innerText = data.Probe1 + " C";
+                // Example: show Probe2 in a different element
+                document.getElementById('ds-temp2').innerText = data.Probe2 + " C";
+
+            } catch (err) {
+                console.error("Error fetching temperature data:", err);
+            }
+        }
+
+        async function updateCO2SensorData() {
             try {
                 const res = await fetch('/co2_sensor');
                 const data = await res.json();
@@ -136,16 +151,20 @@
                 document.getElementById("tl-status").innerText =
                   "Error loading timelapse status";
               }
-            }
+        }
 
-            // Call it once on page load
-            updateTimelapseStatus();
+        // Call it once on page load
+        updateTimelapseStatus();
 
-            // Optionally refresh every few seconds
-            setInterval(updateTimelapseStatus, 5000);
+        // Optionally refresh every few seconds
+        setInterval(updateTimelapseStatus, 5000);
         
-        setInterval(updateSensorData, 5000);
-        updateSensorData(); // call once at page load
+
+        setInterval(updateTempSensorData,5000);
+        setInterval(updateCO2SensorData, 5000);
+        
+        updateTempSensorData();
+        updateCO2SensorData(); // call once at page load
         
         setInterval(updateImage, 2000);
 

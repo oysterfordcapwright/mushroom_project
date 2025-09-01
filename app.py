@@ -1,7 +1,7 @@
 # app.py
 from __init__ import create_app
 import threading
-from timelapse import run_timelapse
+from AUSDOM_cam import run_timelapse
 
 app = create_app()
 
@@ -26,4 +26,4 @@ def start_timelapse_thread():
 if __name__ == '__main__':
     # Note: We don't start the thread here anymore
     # It will be started by before_first_request
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=False)

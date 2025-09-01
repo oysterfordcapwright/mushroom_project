@@ -6,8 +6,8 @@ import time
 base_dir = '/sys/bus/w1/devices/'
 
 sensor_names = {
-    "28-02f3d446c2fc": "Probe1",    # Bottom Probe
-    "28-3c01f0953a0b": "Probe2",    #Top Probe
+    "28-02f3d446c2fc": "Probe1",    # Bottom Probe (cold side)
+    "28-3c01f0953a0b": "Probe2",    # Top Probe (hot side)
 } 
 
 def list_devices():
@@ -33,6 +33,25 @@ def read_temp(device_file):
         temp_c = float(temp_string) / 1000.0
         return temp_c
 
+def get_DS_temp():
+    """
+    Read temperatures from all connected DS18B20 sensors.
+    Returns a dict {sensor_name_or_id: temperature_C}.
+    """
+    devices = list_devices()
+    temps = {}
+
+    for device in devices:
+        device_id = os.path.basename(device)
+        device_file = device + '/w1_slave'
+        temp_c = read_temp(device_file)
+
+        # Use friendly name if available, otherwise fall back to device_id
+        sensor_name = sensor_names.get(device_id, device_id)
+        temps[sensor_name] = round(temp_c, 2)
+
+    return temps
+
 def main():
     devices = list_devices()
     if not devices:
@@ -45,12 +64,11 @@ def main():
 
     try:
         while True:
-            for device in devices:
-                device_file = device + '/w1_slave'
-                temp_c = read_temp(device_file)
-                print(f"Sensor {os.path.basename(device)}: {temp_c:.2f} C")
+            temps = get_DS_temp()
+            for name, temp in temps.items():
+                print(f"{name}: {temp:.2f} C")
             print("---")
-            time.sleep(2)  # adjust interval as needed
+            time.sleep(2)
     except KeyboardInterrupt:
         print("\nStopping...")
 

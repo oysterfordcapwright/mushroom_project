@@ -81,10 +81,10 @@ class PeltierController:
     def set_setpoint(self, temperature: float):
         if 0 <= temperature <= 50:
             self.setpoint = temperature
-            logger.info(f"Setpoint changed to {temperature}�C")
+            logger.info(f"Setpoint changed to {temperature} C")
             return True
         else:
-            logger.warning(f"Setpoint {temperature}�C is outside valid range")
+            logger.warning(f"Setpoint {temperature} C is outside valid range")
             return False
     
     def get_setpoint(self):

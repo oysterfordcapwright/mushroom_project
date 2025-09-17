@@ -10,6 +10,7 @@ import ffmpeg
 from CO2_sensor import read_all 
 from AUSDOM_cam import update_latest_img, capture_img, data_lock, timelapse_data, toggle_timelapse, set_tl_interval
 from DS18B20 import get_DS_temp
+from DHT22 import get_DHT22_data
 
 bp = Blueprint('main', __name__)
 
@@ -42,6 +43,14 @@ def take_clip():
 def DS18B20_sensor():
     temps = get_DS_temp()
     return temps
+
+@bp.route('/DHT22_sensor')
+@login_required
+def DHT22_sensor():
+    humidity_data = get_DHT22_data()
+    if humidity_data:
+        return humidity_data
+    return {"error": "Failed to read DHT22"}
 
 
 @bp.route('/co2_sensor')

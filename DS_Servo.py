@@ -6,8 +6,8 @@ _SERVO_MAP = {
     "intake": (0, 0),
     "output": (0, 2),
 }
-_MIN_DC = 4.0
-_MAX_DC = 11.0
+_MIN_DC = 4.5
+_MAX_DC = 10.0
 
 _targets = {}
 _servos = {}
@@ -21,9 +21,9 @@ def _angle_to_dc(angle):
 
 def _servo_loop(name, chip, channel):
     pwm = HardwarePWM(pwm_channel=channel, hz=50, chip=chip)
-    pwm.start(_angle_to_dc(81))  # start at 90
+    pwm.start(_angle_to_dc(90))  # start at 90
     _servos[name] = pwm
-    _targets[name] = 81
+    _targets[name] = 90
 
     while _running:
         target = _targets[name]

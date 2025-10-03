@@ -1,83 +1,148 @@
-from gpiozero import LED
+# from gpiozero import LED
 
-# Define your pins
-pins = [23, 27, 13, 19, 12, 16, 20, 21]
+# # Define your pins
+# pins = [23, 27, 13, 19, 12, 16, 20, 21]
 
-# Create LED objects for each pin (HIGH = ON, LOW = OFF)
-leds = {pin: LED(pin) for pin in pins}
+# # Create LED objects for each pin (HIGH = ON, LOW = OFF)
+# leds = {pin: LED(pin) for pin in pins}
 
-def turn_on(pin):
-    leds[pin].on()
-    print(f"GPIO{pin} ON")
+# def turn_on(pin):
+#     leds[pin].on()
+#     print(f"GPIO{pin} ON")
 
-def turn_off(pin):
-    leds[pin].off()
-    print(f"GPIO{pin} OFF")
+# def turn_off(pin):
+#     leds[pin].off()
+#     print(f"GPIO{pin} OFF")
 
-try:
-    print("GPIO Control Interactive Mode (gpiozero)")
-    print("Commands: on <pin>, off <pin>, on all, off all, exit")
+# try:
+#     print("GPIO Control Interactive Mode (gpiozero)")
+#     print("Commands: on <pin>, off <pin>, on all, off all, exit")
 
-    while True:
-        cmd = input("Enter command: ").strip().lower()
+#     while True:
+#         cmd = input("Enter command: ").strip().lower()
 
-        if cmd == "exit":
-            break
+#         if cmd == "exit":
+#             break
 
-        parts = cmd.split()
-        if len(parts) < 2:
-            print("Invalid command. Example: on 23, off 27, on all, off all")
-            continue
+#         parts = cmd.split()
+#         if len(parts) < 2:
+#             print("Invalid command. Example: on 23, off 27, on all, off all")
+#             continue
 
-        action, target = parts[0], parts[1]
+#         action, target = parts[0], parts[1]
 
-        if target == "all":
-            for p in pins:
-                if action == "on":
-                    turn_on(p)
-                elif action == "off":
-                    turn_off(p)
-        else:
-            try:
-                pin = int(target)
-            except ValueError:
-                print("Pin must be a number or 'all'")
-                continue
+#         if target == "all":
+#             for p in pins:
+#                 if action == "on":
+#                     turn_on(p)
+#                 elif action == "off":
+#                     turn_off(p)
+#         else:
+#             try:
+#                 pin = int(target)
+#             except ValueError:
+#                 print("Pin must be a number or 'all'")
+#                 continue
 
-            if pin not in pins:
-                print(f"Pin {pin} not in configured list {pins}")
-                continue
+#             if pin not in pins:
+#                 print(f"Pin {pin} not in configured list {pins}")
+#                 continue
 
-            if action == "on":
-                turn_on(pin)
-            elif action == "off":
-                turn_off(pin)
-            else:
-                print("Action must be 'on' or 'off'")
+#             if action == "on":
+#                 turn_on(pin)
+#             elif action == "off":
+#                 turn_off(pin)
+#             else:
+#                 print("Action must be 'on' or 'off'")
 
-finally:
-    # Turn everything off before exit
-    for p in pins:
-        leds[p].off()
-    print("All GPIO turned off, exiting.")
-
-
+# finally:
+#     # Turn everything off before exit
+#     for p in pins:
+#         leds[p].off()
+#     print("All GPIO turned off, exiting.")
 
 
 
 
 
-# import board
-# import neopixel_spi as neopixel
-
-# # SPI setup
-# pixels = neopixel.NeoPixel_SPI(board.SPI(), 10, brightness=0.2, auto_write=False)
-
-# # Turn all pixels off
-# pixels.fill((0, 0, 0))
-# pixels.show()
 
 
+import board
+import neopixel_spi as neopixel
+import time
+
+# SPI setup
+pixels = neopixel.NeoPixel_SPI(board.SPI(), 10, brightness=0.2, auto_write=False)
+# Turn all pixels off
+pixels.fill((50, 0, 0))
+pixels.show()
+
+
+
+
+
+import board
+import neopixel_spi as neopixel
+
+# Standard color dictionary
+COLOR_MAP = {
+    "red": (255, 0, 0),
+    "green": (0, 255, 0),
+    "blue": (0, 0, 255),
+    "yellow": (255, 255, 0),
+    "cyan": (0, 255, 255),
+    "magenta": (255, 0, 255),
+    "white": (255, 255, 255),
+    "orange": (255, 165, 0),
+    "purple": (128, 0, 128),
+    "black": (0, 0, 0)  # off
+}
+
+# Initialize NeoPixel strip (example with 12 LEDs)
+pixels = neopixel.NeoPixel_SPI(board.SPI(), n=12, brightness=0.2, auto_write=False)
+pixels.fill((0, 0, 0))
+pixels.show()
+
+
+def show_color(color_name, pixel_indices=None):
+    """
+    Display a color on NeoPixels.
+    
+    Args:
+        color_name (str): Name of color from COLOR_MAP
+        pixel_indices (list, optional): Which pixels to update. If None, update all.
+    """
+    color = COLOR_MAP.get(color_name.lower())
+    if color is None:
+        raise ValueError(f"Unknown color '{color_name}'. Valid options: {list(COLOR_MAP.keys())}")
+    
+    if pixel_indices is None:
+        # Update all pixels
+        pixels.fill(color)
+    else:
+        # Update only selected pixels
+        for i in pixel_indices:
+            if 0 <= i < NUM_PIXELS:
+                pixels[i] = color
+    
+    pixels.show()
+
+
+# ======================
+# Example Usage
+# ======================
+if __name__ == "__main__":
+    import time
+
+    try:
+        while True:
+            for c in COLOR_MAP:
+                show_color(c)
+                print(f"Displaying {c}")
+                time.sleep(1)
+    except KeyboardInterrupt:
+        show_color("black")  # Turn off on exit
+        print("NeoPixels cleared")
 
 
 

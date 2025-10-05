@@ -11,7 +11,7 @@ def current_time():
 def connect():
     return serial.Serial(DEVICE_PATH, baudrate=9600, timeout=3.0)
 
-def read_all():
+def get_CO2_data():
     with connect() as ser:
         ser.write(b"\xff\x01\x86\x00\x00\x00\x00\x00\x79")
         r = ser.read(9)
@@ -25,10 +25,10 @@ def read_all():
                     "Uh": r[6], # ticks in calibration cycle?
                     "Ul": r[7]} # number of performed calibrations?
         else:
-            raise Exception("got unexpected answer %s" % r)
+            raise Exception("Got unexpected answer from CO2 sensor %s" % r)
 
 def get_CO2_ppm():
-    data = read_all()
+    data = get_CO2_data()
     return data["co2"]
 
 '''

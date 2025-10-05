@@ -7,9 +7,9 @@
     <div class="sensor-data">
         <!-- ... sensor data HTML ... -->
         <div class="sensor-item">
-            <div class="sensor-value" id="ds-temp1">X degrees C</div>
-            <div class="sensor-value" id="ds-temp2">X degrees C</div>
-            <div class="sensor-value" id="ds-temp3">X degrees C</div>
+            <div class="sensor-value" id="ds-temp1">X °C</div>
+            <div class="sensor-value" id="ds-temp2">X °C</div>
+            <div class="sensor-value" id="ds-temp3">X °C</div>
             <div class="sensor-label">Temperature</div>
         </div>
         <div class="sensor-item">
@@ -49,13 +49,20 @@
             <h2>Environment</h2>
 
             <div class="parameter-item">
-                <span class="parameter-label">Set Temperature</span>
+                <span class="parameter-label">Set Temperature (°C)</span>
                 <input type="text" class="parameter-input" id="temperature-setpoint" value="">
             </div>
 
-            <button onclick="fetch('/set_temp')">Set Temperature</button>
-            <button onclick="fetch('/set_humidity')">Set Humidity</button>
-            <button onclick="fetch('/set_CO2')">Set CO2 Level</button>
+            <div class="parameter-item">
+                <span class="parameter-label">Set Humidity (RH)</span>
+                <input type="text" class="parameter-input" id="humidity-setpoint" value="">
+            </div>
+
+            <div class="parameter-item">
+                <span class="parameter-label">Set CO2 (ppm)</span>
+                <input type="text" class="parameter-input" id="co2-setpoint" value="">
+            </div>
+
             <button onclick="fetch('/set_light_schedule')">Light Schedule</button>
             <button onclick="fetch('/set_light_wavelength')">Light Wavelengths</button>
             <div class="status" id="env-status">Stable</div>
@@ -109,9 +116,12 @@
     <script>
 
         //Globals
-        let tlData = null;
         let CO2Data = null;
         let tempData = null;
+        let humidData = null;
+
+        let tlData = null;
+        let controlData = null;
 
         // Your JavaScript code 
         // Control paramters
@@ -124,7 +134,6 @@
         // Track original values and changed status
         const originalValues = {};
         const changedInputs = new Set();
-
 
         async function get_env_parameters() {
             try {
@@ -158,9 +167,15 @@
                 // Fetch timelapse status
                 let res = await fetch('/timelapse_status');
                 tlData = await res.json();
+
+                res = await fetch('/control_status');
+                controlData = await res.json();
                 
                 console.log("Control parameters updated:");
+
                 updateUIWithControlData();
+
+                initializeOriginalValues();
                 
             } catch (err) {
                 console.error("Error fetching data:", err);
@@ -168,25 +183,34 @@
         }
 
         function initializeOriginalValues() {
-            if (tlData && tlData.interval !== undefined) {
-                originalValues['timelapse-interval'] = tlData.interval;
-            }
+            originalValues['timelapse-interval'] = tlData?.interval ?? null;
+
+            originalValues['temperature-setpoint'] = controlData?.setpoints?.temperature ?? null;
+            originalValues['humidity-setpoint']    = controlData?.setpoints?.humidity ?? null;
+            originalValues['co2-setpoint']         = controlData?.setpoints?.co2_max ?? null;
+            originalValues['light-schedule']       = controlData?.setpoints?.light_schedule ?? null;
+
         }   
 
         function updateUIWithControlData(){
-            if (tlData){
+            if (tlData && controlData){
                 document.getElementById("timelapse-interval").value = tlData.interval;
+                document.getElementById("temperature-setpoint").value = controlData.setpoints.temperature;
+                document.getElementById("humidity-setpoint").value = controlData.setpoints.humidity;
+                document.getElementById("co2-setpoint").value = controlData.setpoints.co2;
+
+                // Need to still add light schedule (might cause issues)
             }
         }
 
         function updateUIWithSensorData() {
-            if (CO2Data && tempData) {
+            if (CO2Data && tempData && humidData) {
                 // Update your UI elements with the fetched data
                 //document.getElementById('timelapse-status').textContent = tlData.status;
                 document.getElementById('co2-ppm').innerText = CO2Data.co2 + " ppm";
-                document.getElementById('ds-temp1').innerText = tempData.Probe1 + " C";
-                document.getElementById('ds-temp2').innerText = tempData.Probe2 + " C";
-                document.getElementById('ds-temp3').innerText = tempData.Probe3 + " C";
+                document.getElementById('ds-temp1').innerText = "Ouside|" + tempData.Probe1 + " °C";
+                document.getElementById('ds-temp2').innerText = "Coil|" + tempData.Probe2 + " °C";
+                document.getElementById('ds-temp3').innerText = "Peltier|" + tempData.Probe3 + " °C";
                 document.getElementById('dht-humidity').innerText = humidData.humidity + " %";
 
             }
@@ -198,13 +222,11 @@
         get_env_parameters();
         //updateUIWithSensorData();
 
-        setInterval(get_control_parameters, 8000);
+        //setInterval(get_control_parameters, 8000);
         //setInterval(updateUIWithControlData, 5000);
 
         get_control_parameters();
         //updateUIWithControlData();
-
-        initializeOriginalValues();
         
 
 
@@ -281,21 +303,22 @@
             const savedMessage = document.getElementById('saved-message');
             savedMessage.style.display = 'block';
             
-            // Hide saved message after 3 seconds
+            // Hide saved message after 4 seconds
             setTimeout(() => {
                 savedMessage.style.display = 'none';
-            }, 3000);
+            }, 4000);
             
 
             try {
                 if (originalValues['timelapse-interval']) {
                     await setTimelapseInterval(originalValues['timelapse-interval']);
                 }
-                
-                // Add calls to other set functions here for other parameters
+
                 // if (originalValues['temperature-setpoint']) {
                 //     await setTemperature(originalValues['temperature-setpoint']);
                 // }
+
+                await setSetpoints(originalValues);
                 
                 console.log("All changes saved successfully");
                 
@@ -308,27 +331,11 @@
             }
         }
 
-        // Simulated function to periodically check for external updates
-        // function checkForExternalUpdates() {
-            // In a real application, this would fetch from an API or file
-            // console.log("Checking for external updates...");
-            
-            // For demonstration, we'll just randomly decide if there's an update
-            // if (Math.random() > 0.7) {
-                // Simulate an external change
-                // const newValue = Math.floor(Math.random() * 60) + 1;
-                // externalConfig.timelapseInterval = newValue;
-                
-                // Update the input if it hasn't been changed by the user
-                // if (!changedInputs.has('timelapse-interval')) {
-        //             document.getElementById('timelapse-interval').value = newValue;
-        //             originalValues['timelapse-interval'] = newValue;
-        //             console.log("External update applied: Timelapse Interval =", newValue);
-        //         }
-        //     }
-        // }
+        function showErrorNotification(message) {
+            console.error(message);
+            alert(message); // temporary visible feedback
+        }
 
-        
 
         // Check for external updates every 10 seconds
         // setInterval(checkForExternalUpdates, 10000);
@@ -339,6 +346,204 @@
         //     const text = await res.text();
         //     document.getElementById('camera-status').innerText = text;
         // }
+        //Test stuff______________________________________
+
+
+
+        // async function setSetpoints(originalValues) {
+        //     // Extract values from originalValues
+        //     let temperature = Number(originalValues['temperature-setpoint']);
+        //     let humidity = Number(originalValues['humidity-setpoint']);
+        //     let co2_max = Number(originalValues['co2-setpoint']);
+        //     let light_schedules = originalValues['light-schedule'] ?? [ 
+        //         { start: "08:00", end: "18:00", white: 0.5,uv: 0.5 },
+        //         { start: "01:00", end: "04:00", white: 0.5,uv: 0.5 }
+        //     ];      // Default might cause issues later
+
+        //     // --- Error checks ---
+        //     const errors = [];
+        //     if (!isNaN(temperature)) {
+        //         if (temperature <= 5 || temperature >= 40) {
+        //             errors.push("Temperature must be between 5-40 °C.");
+        //         }
+        //     } else {
+        //         temperature = undefined; // don't send if invalid
+        //     }
+
+        //     if (!isNaN(humidity)) {
+        //         if (humidity < 0 || humidity > 100) {
+        //             errors.push("Humidity must be between 0-100%.");
+        //         }
+        //     } else {
+        //         humidity = undefined;
+        //     }
+
+        //     if (!isNaN(co2_max)) { // Changed to co2_max
+        //         if (co2_max <= 0 || co2_max > 5000) {
+        //             errors.push("CO2 must be >0 and <=5000 ppm.");
+        //         }
+        //     } else {
+        //         co2_max = undefined; // Changed to co2_max
+        //     }
+
+        //     if (errors.length > 0) {
+        //         const errorMsg = errors.join(" ");
+        //         console.error("Setpoints validation errors:", errorMsg);
+        //         showErrorNotification(errorMsg);
+        //         throw new Error(errorMsg);
+        //     }
+
+        //     // --- Build JSON payload ---
+        //     const payload = {};
+        //     if (temperature !== undefined) payload.temperature = temperature;
+        //     if (humidity !== undefined) payload.humidity = humidity;
+        //     if (co2_max !== undefined) payload.co2_max = co2_max; // Changed to co2_max
+        //     if (light_schedules !== undefined) payload.light_schedules = light_schedules; // Changed to light_schedules
+
+        //     console.log("Sending payload:", payload); // Debug log
+
+        //     // --- Send to server ---
+        //     try {
+        //         const response = await fetch('/update_setpoints', { // Changed route name
+        //             method: 'POST',
+        //             headers: { 'Content-Type': 'application/json' },
+        //             body: JSON.stringify(payload)
+        //         });
+
+        //         if (!response.ok) {
+        //             const errorText = await response.text();
+        //             throw new Error(`Server returned ${response.status}: ${errorText}`);
+        //         }
+
+        //         const result = await response.json();
+        //         console.log("Setpoints updated successfully:", result);
+        //         return result;
+
+        //     } catch (error) {
+        //         console.error("Failed to set setpoints:", error);
+        //         showErrorNotification(`Failed to update setpoints: ${error.message}`);
+        //         throw error;
+        //     }
+        // }
+
+
+
+        async function setSetpoints(originalValues) {
+            // Extract values from originalValues - ONLY the ones you have UI for
+            let temperature = Number(originalValues['temperature-setpoint']);
+            let humidity = Number(originalValues['humidity-setpoint']);
+            let co2_max = Number(originalValues['co2-setpoint']);
+            
+            // Remove light schedules for now until you implement the UI
+            // let light_schedules = originalValues['light-schedule'];
+
+            // --- Error checks (same as before) ---
+            const errors = [];
+            if (!isNaN(temperature)) {
+                if (temperature <= 5 || temperature >= 40) {
+                    errors.push("Temperature must be between 5-40 �C.");
+                }
+            } else {
+                temperature = undefined;
+            }
+
+            if (!isNaN(humidity)) {
+                if (humidity < 0 || humidity > 100) {
+                    errors.push("Humidity must be between 0-100%.");
+                }
+            } else {
+                humidity = undefined;
+            }
+
+            if (!isNaN(co2_max)) {
+                if (co2_max <= 0 || co2_max > 5000) {
+                    errors.push("CO2 must be >0 and <=5000 ppm.");
+                }
+            } else {
+                co2_max = undefined;
+            }
+
+            if (errors.length > 0) {
+                const errorMsg = errors.join(" ");
+                console.error("Setpoints validation errors:", errorMsg);
+                showErrorNotification(errorMsg);
+                throw new Error(errorMsg);
+            }
+
+            // --- Build JSON payload - ONLY include what you have ---
+            const payload = {};
+            if (temperature !== undefined) payload.temperature = temperature;
+            if (humidity !== undefined) payload.humidity = humidity;
+            if (co2_max !== undefined) payload.co2_max = co2_max;
+            // Don't include light_schedules until you have the UI
+
+            console.log("Sending payload:", JSON.stringify(payload, null, 2));
+
+            // --- Send to server ---
+            try {
+                const response = await fetch('/update_setpoints', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`Server error: ${errorData.message || response.statusText}`);
+                }
+
+                const result = await response.json();
+                console.log("Setpoints updated successfully:", result);
+                return result;
+
+            } catch (error) {
+                console.error("Failed to set setpoints:", error);
+                showErrorNotification(`Failed to update setpoints: ${error.message}`);
+                throw error;
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // async function setTemperature(temperatureSetpoint) {
+        //     temperatureSetpoint = Number(temperatureSetpoint); // ensure it's numeric
+
+        //     if ((isNaN(temperatureSetpoint) || temperatureSetpoint <= 5 || temperatureSetpoint >= 40))  {
+        //         throw new Error("Invalid temperature value value. Must be a within 5-40°C.");
+        //     }
+
+        //     try {
+        //         const response = await fetch(`/set_temp/${temperatureSetpoint}`, {method: 'POST'});
+
+        //         if (!response.ok) {
+        //             throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        //         }
+
+        //         const result = await response.json();
+        //         console.log("Temperature set successfully:", result);
+        //         return result;
+
+        //     } catch (error) {
+        //         console.error("Failed to set temperature:", error);
+        //         showErrorNotification(`Failed to set temperature: ${error.message}`);
+        //         throw error;
+        //     }
+        // }
+
+
+        //-_________________________________________
+
 
 
         async function setTimelapseInterval(intervalValue) {
@@ -374,6 +579,7 @@
             document.getElementById('photo-status').innerText = "Photo updated according to time stamp"; 
         }
         
+
         async function refreshManual() {
             document.getElementById('photo-status').innerText = "Capturing photo...";
             try {
@@ -386,28 +592,30 @@
     
         async function updateTimelapseStatus() {
             try {
-
-                // Choose color based on status
-                const isRunning = tlData.status.toLowerCase().includes("running");
+                // Safe access using optional chaining
+                const statusText = tlData?.status ?? "Unknown";
+                const isRunning = tlData?.status?.toLowerCase().includes("running") ?? false;
                 const statusColor = isRunning ? "darkgreen" : "orange";
 
                 document.getElementById("tl-status").innerHTML = `
                     <div>
                     Timelapse status: 
-                    <span style="font-weight:bold; color:${statusColor};">${tlData.status}</span><br>
-                    Started: ${tlData.start_timestamp}<br>
-                    Number of photos: ${tlData.iterations}<br>
-                    Current: ${tlData.last_timestamp || "N/A"}
+                    <span style="font-weight:bold; color:${statusColor};">${statusText}</span><br>
+                    Started: ${tlData?.start_timestamp ?? "N/A"}<br>
+                    Number of photos: ${tlData?.iterations ?? "N/A"}<br>
+                    Current: ${tlData?.last_timestamp ?? "N/A"}
                     </div>
                 `;
-                
-              } catch (err) {
+
+            } catch (err) {
                 console.error(err);
                 document.getElementById("tl-status").innerText =
-                  "Error loading timelapse status";
-              }
+                "Error loading timelapse status";
+            }
         }
+
                 
+
         async function toggleTimelapse() {
             try {
                 const res = await fetch('/toggle_tl');

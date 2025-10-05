@@ -3,19 +3,18 @@ import board
 import neopixel_spi as neopixel
 from rpi_hardware_pwm import HardwarePWM
 from gpiozero import PWMOutputDevice, DigitalOutputDevice
+from DS18B20 import get_DS_temp
 
 
-# ================================
 # Pin Mapping with Labels
-# ================================
 PIN_CONFIG = {
     "water_pump": 27,
     "white_leds": 12,       # Hardware PWM (channel 0)
     "uv_leds": 13,          # Hardware PWM (channel 1)
     "peltier_fan": 1,
     "intake_fan": 16,
-    "internal_fan": 20,
     "outflow_fan": 21,
+    "internal_fan": 20,
     "humidifier": 23,
 }
 
@@ -28,6 +27,7 @@ LEFT_ENABLE_PIN = 26
 RIGHT_ENABLE_PIN = 6
 LEFT_PWM_PIN = 5
 RIGHT_PWM_PIN = 0
+
 
 # ================================
 # Device Controller Class
@@ -42,7 +42,7 @@ class DeviceController:
                 if label in ("water_pump", "humidifier"):
                     self.devices[label] = DigitalOutputDevice(pin)
                 else:
-                    self.devices[label] = PWMOutputDevice(pin, frequency=1000)
+                    self.devices[label] = PWMOutputDevice(pin, frequency=20)
 
         # Setup hardware PWM LEDs
         self.devices["white_leds"] = HardwarePWM(pwm_channel=0, hz=1000, chip=0)
@@ -70,7 +70,7 @@ class DeviceController:
             "white": (255, 255, 255),
             "orange": (255, 165, 0),
             "purple": (128, 0, 128),
-            "black": (0, 0, 0)
+            "off": (0, 0, 0)
         }
         self.neopixels = neopixel.NeoPixel_SPI(
             board.SPI(),
@@ -272,7 +272,6 @@ class DeviceController:
             raise ValueError(f"Pixel index {index} out of range (0-{self.NEO_NUM_PIXELS-1})")
 
 
-
     # ================================
     # Cleanup
     # ================================
@@ -309,40 +308,39 @@ if __name__ == "__main__":
     try:
         dc = DeviceController()
         
-        # Turn on water pump
-        # dc.turn_on("water_pump")
-        # time.sleep(5)
-        # dc.turn_off("water_pump")
 
         # Set white LEDs (hardware PWM)
         # dc.set_pwm("white_leds", 80)
         # dc.set_pwm("uv_leds", 80)  # 50% brightness
-        # time.sleep(5)
-        # dc.turn_off("white_leds")
 
         # Set all pixels to red
-        dc.set_neopixel_color("red")
-        time.sleep(3)
+        # dc.set_neopixel_color("red")
+        # time.sleep(3)
 
-        # Set pixels 0 and 1 to blue
-        dc.set_neopixel_color("blue", pixel_indices=[0,1])
-        time.sleep(3)
+        # # Set pixels 0 and 1 to blue
+        # dc.set_neopixel_color("blue", pixel_indices=[0,1])
+        # time.sleep(3)
 
-        # Read current pixel colors
-        dc.set_neopixel_brightness(1.0)
-        time.sleep(3)
-        dc.set_neopixel_brightness(0.2)
-        print(dc.get_neopixel_state())     # full list
-        print(dc.get_neopixel_state(0))    # pixel 0 color
 
         # Use H-bridge
         # dc.peltier_enable()
         # dc.set_peltier_pwm(1.0, "cool")  # forward
-        # time.sleep(10)
-        # dc.peltier_disable()
+        # dc.turn_on("water_pump")
+        
+
+        # while True:
+        #     print("Temp:", get_DS_temp())
+        #     time.sleep(0.3)
+
+        while True:
+            dc.set_servo_angle(0)
+            time.sleep(3)
+            dc.set_servo_angle(180)
+            time.sleep(3)
+
 
         # Cleanup
-        dc.cleanup()
+        # dc.cleanup()
 
     except KeyboardInterrupt:
         print("Stopping...")

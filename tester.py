@@ -1,3 +1,9 @@
+from CO2_sensor import get_CO2_ppm
+from DS18B20 import get_DS_temp
+from DHT22 import get_DHT22_data
+
+
+
 # from gpiozero import LED
 
 # # Define your pins
@@ -67,82 +73,83 @@
 
 
 
-import board
-import neopixel_spi as neopixel
-import time
+# import board
+# import neopixel_spi as neopixel
+# import time
 
-# SPI setup
-pixels = neopixel.NeoPixel_SPI(board.SPI(), 10, brightness=0.2, auto_write=False)
-# Turn all pixels off
-pixels.fill((50, 0, 0))
-pixels.show()
-
-
+# # SPI setup
+# pixels = neopixel.NeoPixel_SPI(board.SPI(), 10, brightness=0.2, auto_write=False)
+# # Turn all pixels off
+# pixels.fill((50, 0, 0))
+# pixels.show()
 
 
 
-import board
-import neopixel_spi as neopixel
-
-# Standard color dictionary
-COLOR_MAP = {
-    "red": (255, 0, 0),
-    "green": (0, 255, 0),
-    "blue": (0, 0, 255),
-    "yellow": (255, 255, 0),
-    "cyan": (0, 255, 255),
-    "magenta": (255, 0, 255),
-    "white": (255, 255, 255),
-    "orange": (255, 165, 0),
-    "purple": (128, 0, 128),
-    "black": (0, 0, 0)  # off
-}
-
-# Initialize NeoPixel strip (example with 12 LEDs)
-pixels = neopixel.NeoPixel_SPI(board.SPI(), n=12, brightness=0.2, auto_write=False)
-pixels.fill((0, 0, 0))
-pixels.show()
 
 
-def show_color(color_name, pixel_indices=None):
-    """
-    Display a color on NeoPixels.
+# import board
+# import neopixel_spi as neopixel
+
+# # Standard color dictionary
+# COLOR_MAP = {
+#     "red": (255, 0, 0),
+#     "green": (0, 255, 0),
+#     "blue": (0, 0, 255),
+#     "yellow": (255, 255, 0),
+#     "cyan": (0, 255, 255),
+#     "magenta": (255, 0, 255),
+#     "white": (255, 255, 255),
+#     "orange": (255, 165, 0),
+#     "purple": (128, 0, 128),
+#     "black": (0, 0, 0)  # off
+# }
+
+# # Initialize NeoPixel strip (example with 10 LEDs)
+# NUM_PIXELS = 12
+# pixels = neopixel.NeoPixel_SPI(board.SPI(), 12, brightness=0.2, auto_write=False)
+# pixels.fill((0, 0, 0))
+# pixels.show()
+
+
+# def show_color(color_name, pixel_indices=None):
+#     """
+#     Display a color on NeoPixels.
     
-    Args:
-        color_name (str): Name of color from COLOR_MAP
-        pixel_indices (list, optional): Which pixels to update. If None, update all.
-    """
-    color = COLOR_MAP.get(color_name.lower())
-    if color is None:
-        raise ValueError(f"Unknown color '{color_name}'. Valid options: {list(COLOR_MAP.keys())}")
+#     Args:
+#         color_name (str): Name of color from COLOR_MAP
+#         pixel_indices (list, optional): Which pixels to update. If None, update all.
+#     """
+#     color = COLOR_MAP.get(color_name.lower())
+#     if color is None:
+#         raise ValueError(f"Unknown color '{color_name}'. Valid options: {list(COLOR_MAP.keys())}")
     
-    if pixel_indices is None:
-        # Update all pixels
-        pixels.fill(color)
-    else:
-        # Update only selected pixels
-        for i in pixel_indices:
-            if 0 <= i < NUM_PIXELS:
-                pixels[i] = color
+#     if pixel_indices is None:
+#         # Update all pixels
+#         pixels.fill(color)
+#     else:
+#         # Update only selected pixels
+#         for i in pixel_indices:
+#             if 0 <= i < NUM_PIXELS:
+#                 pixels[i] = color
     
-    pixels.show()
+#     pixels.show()
 
 
 # ======================
 # Example Usage
 # ======================
-if __name__ == "__main__":
-    import time
+# if __name__ == "__main__":
+#     import time
 
-    try:
-        while True:
-            for c in COLOR_MAP:
-                show_color(c)
-                print(f"Displaying {c}")
-                time.sleep(1)
-    except KeyboardInterrupt:
-        show_color("black")  # Turn off on exit
-        print("NeoPixels cleared")
+#     try:
+#         while True:
+#             for c in COLOR_MAP:
+#                 show_color(c)
+#                 print(f"Displaying {c}")
+#                 time.sleep(1)
+#     except KeyboardInterrupt:
+#         show_color("black")  # Turn off on exit
+#         print("NeoPixels cleared")
 
 
 

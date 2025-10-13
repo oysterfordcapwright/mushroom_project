@@ -4,6 +4,13 @@ import os
 from datetime import datetime
 from threading import Lock, Event 
 
+try:
+    from mushroom_controller import chamber_controller
+    CONTROLLER_AVAILABLE = True
+except ImportError:
+    CONTROLLER_AVAILABLE = False
+    print("Mushroom controller not available")
+
 # === Settings ===
 TIME_LAP_DIR = "/home/luke/Pictures/Timelapse Images"
 CURR_IMG_DIR = "/home/luke/Pictures/Latest Image"
@@ -75,6 +82,10 @@ def capture_img():
     for attempt in range(MAX_RETRIES):
         cap = None
         try:
+            if CONTROLLER_AVAILABLE:
+                chamber_controller.trigger_photo_mode(duration=2) 
+                time.sleep(0.3)
+            
             cap = initialize_camera()
             if not cap.isOpened():
                 raise CaptureError("Error: Could not open webcam.")
@@ -133,17 +144,19 @@ def set_tl_interval(time_s):
 
 
 def run_timelapse():
+    # Set paused state by default at startup
+    pause_event.set()  # Start in paused state
     
     intial_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     with data_lock:
         timelapse_data["start_timestamp"] = intial_timestamp
-        timelapse_data["status"] = "running"
+        timelapse_data["status"] = "paused" 
         
-    print(f"Timelapse running")
+    print(f"Timelapse started in PAUSED state")
     try:
         while True:
-
+            # This will wait here when paused
             while pause_event.is_set():
                 time.sleep(1)
             

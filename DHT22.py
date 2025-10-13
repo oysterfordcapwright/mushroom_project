@@ -32,8 +32,8 @@ def get_DHT22_data(retries=3, delay=1):
 
                 if temperature_c is not None and humidity is not None:
                     return {
-                        "temperature": round(temperature_c, 3),
-                        "humidity": round(humidity, 3)
+                        "temperature": round(temperature_c, 4),
+                        "humidity": round(humidity, 4)
                     }
 
                 # If one of them is None, treat as failed attempt

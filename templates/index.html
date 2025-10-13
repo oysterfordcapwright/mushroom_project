@@ -1,11 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <!-- Your original HTML content goes here, but remove the style section -->
-    <!-- I've removed the CSS for brevity - it will be in style.css -->
+    <!-- HTML content, style section is in style.css-->
     
-    <div class="sensor-data">
-        <!-- ... sensor data HTML ... -->
+    <!-- <div class="sensor-data">
         <div class="sensor-item">
             <div class="sensor-value" id="ds-temp1">X °C</div>
             <div class="sensor-value" id="ds-temp2">X °C</div>
@@ -24,16 +22,48 @@
             <div class="sensor-value">X Days X Hours</div>
             <div class="sensor-label">Growth Time</div>
         </div>         
+    </div> -->
+
+     <!-- Sensor Data Display -->
+    <div class="sensor-data">
+        <div class="sensor-item">
+            <div class="sensor-value" id="temp-outside">X °C</div>
+            <div class="temp-label">Outside</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="temp-coil">X °C</div>
+            <div class="temp-label">Coil</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="temp-peltier">X °C</div>
+            <div class="temp-label">Peltier</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="temp-chamber">X °C</div>
+            <div class="temp-label">Chamber</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="dht-humidity">X %</div> 
+            <div class="sensor-label">Humidity</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="co2-ppm">X ppm</div>
+            <div class="sensor-label">CO2 Level</div>
+        </div>
+        <div class="sensor-item">
+            <div class="sensor-value" id="system-uptime">0:00</div>
+            <div class="sensor-label">Run Time</div>
+        </div>         
     </div>
     
     <div class="dashboard">
-        <!-- ... dashboard HTML ... -->
+        <!-- ... Dashboard ... -->
 
+        <!-- Camera -->
         <div class="card">
             <h2>Camera Controls</h2>
             <!--<button onclick="fetchClip()">Record Growth Clip</button>-->
             
-            <!-- Interval input box -->
             <div class="parameter-item">
                 <span class="parameter-label">Timelapse Interval</span>
                 <input type="text" class="parameter-input" id="timelapse-interval" value="">
@@ -44,57 +74,157 @@
             <div class="status" id="tl-status">Number of timelapse photos ...</div>
         </div>
              
-            
+        
+        <!-- Environment Controls -->
         <div class="card">
-            <h2>Environment</h2>
+            <h2>Environment Control</h2>
 
             <div class="parameter-item">
-                <span class="parameter-label">Set Temperature (°C)</span>
+                <span class="parameter-label"> Temperature (°C)</span>
                 <input type="text" class="parameter-input" id="temperature-setpoint" value="">
             </div>
 
             <div class="parameter-item">
-                <span class="parameter-label">Set Humidity (RH)</span>
+                <span class="parameter-label"> Humidity (RH %)</span>
                 <input type="text" class="parameter-input" id="humidity-setpoint" value="">
             </div>
 
             <div class="parameter-item">
-                <span class="parameter-label">Set CO2 (ppm)</span>
+                <span class="parameter-label"> CO2 Level (ppm)</span>
                 <input type="text" class="parameter-input" id="co2-setpoint" value="">
             </div>
 
-            <button onclick="fetch('/set_light_schedule')">Light Schedule</button>
-            <button onclick="fetch('/set_light_wavelength')">Light Wavelengths</button>
-            <div class="status" id="env-status">Stable</div>
-        </div>
-        
-        <!--
-        <div class="card">
-            <h2>Lighting</h2>
-            <button onclick="fetch('/toggle_light')">Toggle Grow Lights</button>
-            <button onclick="fetch('/set_light_schedule')">Set Light Schedule</button>
-            <div class="status" id="light-status">Off</div>
-        </div>
-        -->
-        
-        <div class="card">
-            <h2>System</h2>
-            <button class="warning" onclick="fetch('/emergency_stop')">Emergency Stop</button>
-            <button onclick="fetch('/update_settings')">Update Settings</button>
-            <button onclick="fetch('/view_logs')">View System Logs</button>
-        </div>
-        
-        <div class="card">
-            <h2>Google Drive</h2>
-            <button onclick="fetch('/upload_tl')">Upload Time Lapse</button>
-            <button onclick="fetch('/upload_logs_drive')">Upload Logs</button>
+            <!-- Start/Pause and Emergency Controls -->
+            <div class="control-buttons">
+                <button onclick="toggleSystemState()" id="system-state-btn">Start System</button>
+                <!-- <button class="warning" onclick="fetch('/emergency_stop')">Emergency Stop</button> -->
+            </div>
+            
+            <div class="status" id="env-status">System Ready</div>
         </div>
 
-        <button class="save-btn" id="save-button" disabled>Save Changes</button>
+
+        <!-- System Status -->
+        <div class="card">
+            <h2>System Status</h2>
+            <div class="status-display">
+                <div class="status-grid-single">
+                    <div class="status-item">
+                        <span class="status-label">System State:</span>
+                        <span class="status-value" id="system-state">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Photo Mode:</span>
+                        <span class="status-value" id="photo-mode-status">No</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Peltier:</span>
+                        <span class="status-value" id="peltier-status">Off</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Humidifier:</span>
+                        <span class="status-value" id="humidifier-status">Off</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Internal Fan:</span>
+                        <span class="status-value" id="internal-fan-status">Off</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Ventilation:</span>
+                        <span class="status-value" id="ventilation-status">Closed</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Vent Fans:</span>
+                        <span class="status-value" id="vent-fan-speed">0%</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Active Lights:</span>
+                        <span class="status-value" id="active-light-schedule">None</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+
+        <!-- Lighting Control -->
+        <div class="card lighting-card">
+            <h2>Lighting Control</h2>
+            <div class="lighting-container">
+                <div class="lighting-column">
+                    <div class="light-status">
+                        <h3>Current Schedule</h3>
+                        <div id="current-light-schedule">Loading...</div>
+                    </div>
+                </div>
+                <div class="lighting-column">
+                    <div class="schedule-form">
+                        <h3>Add Light Schedule</h3>
+                        <div class="parameter-row">
+                            <div class="parameter-item compact">
+                                <span class="parameter-label">Start Time</span>
+                                <input type="time" class="parameter-input time-input" id="light-start-time" value="08:00" step="60">
+                            </div>
+                            <div class="parameter-item compact">
+                                <span class="parameter-label">End Time</span>
+                                <input type="time" class="parameter-input time-input" id="light-end-time" value="17:00" step="60">
+                            </div>
+                        </div>
+                        <div class="parameter-row">
+                            <div class="parameter-item compact">
+                                <span class="parameter-label">Colour</span>
+                                <select class="parameter-input" id="light-color">
+                                    <option value="off">Off</option>
+                                    <option value="white" selected>White</option>
+                                    <option value="red">Red</option>
+                                    <option value="green">Green</option>
+                                    <option value="blue">Blue</option>
+                                    <option value="yellow">Yellow</option>
+                                    <option value="cyan">Cyan</option>
+                                    <option value="magenta">Magenta</option>
+                                    <option value="orange">Orange</option>
+                                    <option value="purple">Purple</option>
+                                </select>
+                            </div>
+                            <div class="parameter-item compact">
+                                <span class="parameter-label">RGB LEDs</span>
+                                <input type="number" step="0.1" min="0" max="1" class="parameter-input" id="neopixel-intensity" value="0.2">
+                            </div>
+                            <div class="parameter-item compact">
+                                <span class="parameter-label">White LEDs</span>
+                                <input type="number" step="0.1" min="0" max="1" class="parameter-input" id="white-intensity" value="0.2">
+                            </div>
+                            <div class="parameter-item compact">
+                                <span class="parameter-label">UV LEDs</span>
+                                <input type="number" step="0.1" min="0" max="1" class="parameter-input" id="uv-intensity" value="0.2">
+                            </div>
+                        </div>
+                        <button onclick="addLightSchedule()">Add Schedule</button>
+                    </div>
+                </div>
+            </div>
+            <div class="status" id="light-status">Ready</div>
+        </div>
+        
+
+        <!-- Data Management -->
+        <div class="card">
+            <h2>Data Management</h2>
+            <button onclick="fetch('/upload_tl')">Upload Time Lapse</button>
+            <button onclick="downloadDataLog()">Download Data Log</button>
+        </div>
+
+        <!-- <button class="save-btn" id="save-button" disabled>Save Changes</button>
 
         <div class="status-message" id="unsaved-message">You have unsaved changes</div>
         <div class="status-message status-saved" id="saved-message">Changes saved successfully!</div>
-        
+         -->
+
+         <!-- Save Changes Button -->
+        <div class="card full-width">
+            <button class="save-btn" id="save-button" disabled>Save Changes</button>
+            <div class="status-message" id="unsaved-message">You have unsaved changes</div>
+            <div class="status-message status-saved" id="saved-message">Changes saved successfully!</div>
+        </div>
 
         {% if not current_user.is_admin %}
         <div class="card">
@@ -111,31 +241,34 @@
         <div class="status" id="photo-status"></div>
     </div>
     
-    <!-- ... the rest of your HTML ... -->
     
     <script>
 
         //Globals
+        // Sensor data
         let CO2Data = null;
         let tempData = null;
         let humidData = null;
 
+        // Control data
         let tlData = null;
         let controlData = null;
 
-        // Your JavaScript code 
-        // Control paramters
-
-        // const externalConfig = {
-        //     "timelapseInterval": 30,
-        //     "temperatureSetpoint": 22.5
-        // };
+        // Uptime tracking
+        let systemStartTime = null;
+        let systemUptimeInterval = null;
         
         // Track original values and changed status
         const originalValues = {};
         const changedInputs = new Set();
 
-        async function get_env_parameters() {
+        // Avoid overwritting user inputs
+        let focusedInput = null;
+        let inputFocusTimeout = null;
+        let currentLightSchedules = [];
+
+
+        async function getEnvParameters() {
             try {
                 // Fetch CO2 sensor data
                 let res = await fetch('/co2_sensor');
@@ -148,11 +281,7 @@
                 // Fetch humidity sensor data
                 // debugger;
                 res = await fetch('/DHT22_sensor');
-                // debugger;
                 humidData = await res.json();
-                // debugger;
-                
-
                 
                 console.log("Environment parameters updated:");
                 updateUIWithSensorData();
@@ -162,73 +291,295 @@
             }
         }
 
-        async function get_control_parameters() {
+
+        async function getControlParameters() {
             try {
                 // Fetch timelapse status
                 let res = await fetch('/timelapse_status');
                 tlData = await res.json();
 
+                // Fetch control status
                 res = await fetch('/control_status');
                 controlData = await res.json();
                 
                 console.log("Control parameters updated:");
+                
+                // Only update light schedules from server if user hasn't made local changes
+                if (controlData?.setpoints?.light_schedules && !changedInputs.has('light-schedule')) {
+                    currentLightSchedules = controlData.setpoints.light_schedules;
+                    updateLightScheduleUI();
+                }
 
-                updateUIWithControlData();
+                // Update system state button (this doesn't affect user input)
+                const stateBtn = document.getElementById('system-state-btn');
+                if (controlData?.system_state) {
+                    stateBtn.textContent = controlData.system_state === 'active' ? 'Pause System' : 'Start System';
+                }
 
-                initializeOriginalValues();
+                // Only initialize control values if they haven't been changed by user
+                if (changedInputs.size === 0) {
+                    initialiseControlValues();
+                    updateUIWithControlData();
+                } else {
+                    // If there are unsaved changes, only update non-changed fields
+                    updateUIWithControlDataSelective();
+                }
+
+                updateSystemStatus();
                 
             } catch (err) {
                 console.error("Error fetching data:", err);
             }
         }
 
-        function initializeOriginalValues() {
-            originalValues['timelapse-interval'] = tlData?.interval ?? null;
 
+        function initialiseControlValues() {
+            originalValues['timelapse-interval']   = tlData?.interval ?? null;
             originalValues['temperature-setpoint'] = controlData?.setpoints?.temperature ?? null;
             originalValues['humidity-setpoint']    = controlData?.setpoints?.humidity ?? null;
             originalValues['co2-setpoint']         = controlData?.setpoints?.co2_max ?? null;
-            originalValues['light-schedule']       = controlData?.setpoints?.light_schedule ?? null;
-
+            
+            if (controlData?.setpoints?.light_schedules) {
+                currentLightSchedules = [...controlData.setpoints.light_schedules];
+            } else {
+                currentLightSchedules = [];
+            }
+            originalValues['light-schedule'] = currentLightSchedules;
         }   
+
 
         function updateUIWithControlData(){
             if (tlData && controlData){
                 document.getElementById("timelapse-interval").value = tlData.interval;
                 document.getElementById("temperature-setpoint").value = controlData.setpoints.temperature;
                 document.getElementById("humidity-setpoint").value = controlData.setpoints.humidity;
-                document.getElementById("co2-setpoint").value = controlData.setpoints.co2;
-
-                // Need to still add light schedule (might cause issues)
+                document.getElementById("co2-setpoint").value = controlData.setpoints.co2_max;
             }
         }
+
+
+        function updateUIWithControlDataSelective() {
+            if (!tlData || !controlData) return;
+            
+            // Only update fields that don't have unsaved changes
+            if (!changedInputs.has('timelapse-interval')) {
+                document.getElementById("timelapse-interval").value = tlData.interval;
+            }
+            
+            if (!changedInputs.has('temperature-setpoint')) {
+                document.getElementById("temperature-setpoint").value = controlData.setpoints.temperature;
+            }
+            
+            if (!changedInputs.has('humidity-setpoint')) {
+                document.getElementById("humidity-setpoint").value = controlData.setpoints.humidity;
+            }
+            
+            if (!changedInputs.has('co2-setpoint')) {
+                document.getElementById("co2-setpoint").value = controlData.setpoints.co2_max;
+            }
+        }
+
 
         function updateUIWithSensorData() {
             if (CO2Data && tempData && humidData) {
-                // Update your UI elements with the fetched data
-                //document.getElementById('timelapse-status').textContent = tlData.status;
                 document.getElementById('co2-ppm').innerText = CO2Data.co2 + " ppm";
-                document.getElementById('ds-temp1').innerText = "Ouside|" + tempData.Probe1 + " °C";
-                document.getElementById('ds-temp2').innerText = "Coil|" + tempData.Probe2 + " °C";
-                document.getElementById('ds-temp3').innerText = "Peltier|" + tempData.Probe3 + " °C";
+                document.getElementById('temp-outside').innerText = tempData.Probe1 + "°C";
+                document.getElementById('temp-coil').innerText = tempData.Probe2 + "°C";
+                document.getElementById('temp-peltier').innerText = tempData.Probe3 + "°C";
+                document.getElementById('temp-chamber').innerText = tempData.DHT_Sensor + "°C";
                 document.getElementById('dht-humidity').innerText = humidData.humidity + " %";
-
             }
         }
 
-        setInterval(get_env_parameters, 8000);
-        //setInterval(updateUIWithSensorData, 5000);
 
-        get_env_parameters();
-        //updateUIWithSensorData();
+        async function toggleSystemState() {
+            try {
+                const response = await fetch('/toggle_system_state', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    document.getElementById('env-status').innerText = result.message;
+                    // Update button text based on new state
+                    const btn = document.getElementById('system-state-btn');
+                    btn.textContent = result.new_state === 'active' ? 'Pause System' : 'Start System';
+                    
+                    // Handle uptime tracking
+                    if (result.new_state === 'active') {
+                        startUptimeTimer();
+                    } else {
+                        stopUptimeTimer();
+                    }
+                    
+                    getControlParameters();
+                } else {
+                    showErrorNotification(result.message);
+                }
+            } catch (error) {
+                console.error("Error toggling system state:", error);
+                showErrorNotification("Failed to toggle system state");
+            }
+        }
 
-        //setInterval(get_control_parameters, 8000);
-        //setInterval(updateUIWithControlData, 5000);
 
-        get_control_parameters();
-        //updateUIWithControlData();
+        function startUptimeTimer() {
+            systemStartTime = new Date();
+            if (systemUptimeInterval) clearInterval(systemUptimeInterval);
+            
+            systemUptimeInterval = setInterval(() => {
+                if (systemStartTime) {
+                    const now = new Date();
+                    const diff = now - systemStartTime;
+                    const hours = Math.floor(diff / 3600000);
+                    const minutes = Math.floor((diff % 3600000) / 60000);
+                    document.getElementById('system-uptime').textContent = 
+                        `${hours}:${minutes.toString().padStart(2, '0')}`;
+                }
+            }, 60000); // Update every minute
+        }
+
+
+        function stopUptimeTimer() {
+            if (systemUptimeInterval) {
+                clearInterval(systemUptimeInterval);
+                systemUptimeInterval = null;
+            }
+            document.getElementById('system-uptime').textContent = '0:00';
+        }
+
+
+        function updateLightScheduleUI() {
+            const container = document.getElementById('current-light-schedule');
+            if (currentLightSchedules.length === 0) {
+                container.innerHTML = '<p>No schedules set</p>';
+                return;
+            }
+            
+            let html = '';
+            currentLightSchedules.forEach((schedule, index) => {
+                html += `
+                    <div class="schedule-item">
+                        <div class="schedule-item-content">
+                            <strong>${schedule.start} - ${schedule.end}</strong><br>
+                            Color: ${schedule.colour}, NeoPixel: ${schedule.neopixel}, White: ${schedule.white}, UV: ${schedule.uv}
+                        </div>
+                        <button onclick="removeLightSchedule(${index})">Remove</button>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+
+        function haveLightSchedulesChanged(serverSchedules) {
+            if (!currentLightSchedules || !serverSchedules) return false;
+            if (currentLightSchedules.length !== serverSchedules.length) return true;
+            
+            return JSON.stringify(currentLightSchedules) !== JSON.stringify(serverSchedules);
+        }
+
+
+        async function addLightSchedule() {
+             if (!currentLightSchedules) {
+                currentLightSchedules = controlData?.setpoints?.light_schedules || [];
+            }
+
+            const startTime = document.getElementById('light-start-time').value;
+            const endTime = document.getElementById('light-end-time').value;
+            const colour = document.getElementById('light-color').value;
+            const neopixelIntensity = parseFloat(document.getElementById('neopixel-intensity').value);
+            const whiteIntensity = parseFloat(document.getElementById('white-intensity').value);
+            const uvIntensity = parseFloat(document.getElementById('uv-intensity').value);
+
+            // Validation
+            if (!startTime || !endTime) {
+                showErrorNotification("Please set both start and end times");
+                return;
+            }
+
+             if (neopixelIntensity < 0 || neopixelIntensity > 1 || 
+                whiteIntensity < 0  || whiteIntensity > 1 || 
+                uvIntensity < 0 || uvIntensity > 1) {
+                showErrorNotification("Intensities must be between 0 and 1");
+                return;
+            }
+
+            const newSchedule = {
+                start: startTime,
+                end: endTime,
+                colour: colour,
+                neopixel: neopixelIntensity,
+                white: whiteIntensity,
+                uv: uvIntensity
+            };
+
+            currentLightSchedules.push(newSchedule);
+            updateLightScheduleUI();
+            document.getElementById('light-status').innerText = "Schedule added - click Save Changes to apply";
+            
+            // Mark light schedules as changed
+            originalValues['light-schedule'] = currentLightSchedules;
+            changedInputs.add('light-schedule');
+            updateSaveButtonState();
+        }
+
+        function removeLightSchedule(index) {
+            currentLightSchedules.splice(index, 1);
+            updateLightScheduleUI();
+
+            // Always mark as changed when removing schedules
+            changedInputs.add('light-schedule');
+            updateSaveButtonState();
+            document.getElementById('light-status').innerText = "Schedule removed - click Save Changes to apply";
+        }
+
+        function clearLightSchedules() {
+            if (confirm("Are you sure you want to clear all light schedules?")) {
+                currentLightSchedules = [];
+                updateLightScheduleUI();
+                // changedInputs.delete('light-schedule');
+                // updateSaveButtonState();
+                // document.getElementById('light-status').innerText = "All schedules cleared";
+                 // Mark as changed so user can save the empty state
+                changedInputs.add('light-schedule');
+                updateSaveButtonState();
+                document.getElementById('light-status').innerText = "All schedules cleared - click Save Changes to apply";
+            }
+        }
+
+        async function toggleLights() {
+            try {
+                const response = await fetch('/toggle_lights', { method: 'POST' });
+                const result = await response.json();
+                document.getElementById('light-status').innerText = result.message;
+                
+                // Update button text
+                const btn = document.getElementById('light-toggle-btn');
+                btn.textContent = result.lights_on ? 'Turn Lights Off' : 'Turn Lights On';
+                
+            } catch (error) {
+                console.error("Error toggling lights:", error);
+                showErrorNotification("Failed to toggle lights");
+            }
+        }
+
+        // Start pulling sensor data from controller object
+        setInterval(getEnvParameters, 5000);
+        getEnvParameters();
+
+        setInterval(() => {
+            // Only update control parameters if no unsaved changes and no focused input
+            if (changedInputs.size === 0 && !focusedInput) {
+                getControlParameters();
+            } else {
+                // Still update system status (read-only display)
+                if (controlData) {
+                    updateSystemStatus();
+                }
+            }
+        }, 5000);
+        getControlParameters();
         
-
+        
 
         document.addEventListener('DOMContentLoaded', function() {
             // Wait for data to load before setting up event listeners
@@ -237,6 +588,8 @@
                 const parameterInputs = document.querySelectorAll('.parameter-input');
                 parameterInputs.forEach(input => {
                     input.addEventListener('input', handleInputChange);
+                    input.addEventListener('focus', handleInputFocus);
+                    input.addEventListener('blur', handleInputBlur);
                 });
 
                 // Add event listener to save button
@@ -256,8 +609,16 @@
                     }
                 });
                 {% endif %}
-            }, 1000); // Wait 1 second for initial data to load
+            }, 2000); 
+
+            // Check initial system state for uptime tracking
+            setTimeout(() => {
+                if (controlData?.system_state === 'active') {
+                    startUptimeTimer();
+                }
+            }, 2000);
         });
+
 
         function handleInputChange(event) {
             const input = event.target;
@@ -281,151 +642,80 @@
             unsavedMessage.style.display = changedInputs.size > 0 ? 'block' : 'none';
         }
 
+
+        function handleInputFocus(event) {
+            focusedInput = event.target.id;
+            event.target.classList.add('protected');
+            // Clear any pending timeouts when user focuses on an input
+            if (inputFocusTimeout) {
+                clearTimeout(inputFocusTimeout);
+                inputFocusTimeout = null;
+            }
+        }
+
+
+        function handleInputBlur(event) {
+            event.target.classList.remove('protected');
+            // Set a short delay before allowing updates to this field
+            inputFocusTimeout = setTimeout(() => {
+                focusedInput = null;
+            }, 1000);
+        }
+
+
         async function saveChanges() {
             
-            // Just update the original values
-            changedInputs.forEach(inputId => {
-                const input = document.getElementById(inputId);
-                originalValues[inputId] = input.value;
-                
-                // Remove unsaved styling
-                input.classList.remove('unsaved');
-            });
-            
-            // Clear changed inputs
-            changedInputs.clear();
-            
-            // Disable save button
-            document.getElementById('save-button').disabled = true;
-            
-            // Hide unsaved message, show saved message
-            document.getElementById('unsaved-message').style.display = 'none';
-            const savedMessage = document.getElementById('saved-message');
-            savedMessage.style.display = 'block';
-            
-            // Hide saved message after 4 seconds
-            setTimeout(() => {
-                savedMessage.style.display = 'none';
-            }, 4000);
-            
+             try {
+                // Handle regular input changes (temperature, humidity, CO2, timelapse)
+                changedInputs.forEach(inputId => {
+                    // Skip 'light-schedule' since it's not an input element
+                    if (inputId === 'light-schedule') return;
+                    
+                    const input = document.getElementById(inputId);
+                    originalValues[inputId] = input.value;
+                    input.classList.remove('unsaved');
+                });
 
-            try {
+                // Handle light schedules separately - they're already stored in originalValues
+                
+                // Clear changed inputs
+                changedInputs.clear();
+                
+                // Disable save button
+                document.getElementById('save-button').disabled = true;
+
+                // Clear light status message after save
+                document.getElementById('light-status').innerText = "Ready";
+                
+                // Hide unsaved message, show saved message
+                document.getElementById('unsaved-message').style.display = 'none';
+                const savedMessage = document.getElementById('saved-message');
+                savedMessage.style.display = 'block';
+                
+                // Hide saved message after 4 seconds
+                setTimeout(() => {
+                    savedMessage.style.display = 'none';
+                }, 4000);
+
+                // Save changes to server
                 if (originalValues['timelapse-interval']) {
                     await setTimelapseInterval(originalValues['timelapse-interval']);
                 }
 
-                // if (originalValues['temperature-setpoint']) {
-                //     await setTemperature(originalValues['temperature-setpoint']);
-                // }
-
                 await setSetpoints(originalValues);
+                
                 
                 console.log("All changes saved successfully");
                 
             } catch (error) {
                 // Handle any errors that occurred during saving
                 console.error("Error saving changes:", error);
-                
-                // You might want to revert the UI changes or show an error message
                 showErrorNotification("Failed to save some changes");
+                
+                // Re-enable save button on error so user can retry
+                document.getElementById('save-button').disabled = false;
             }
         }
-
-        function showErrorNotification(message) {
-            console.error(message);
-            alert(message); // temporary visible feedback
-        }
-
-
-        // Check for external updates every 10 seconds
-        // setInterval(checkForExternalUpdates, 10000);
-        
-        // async function fetchClip() {
-        //     document.getElementById('camera-status').innerText = "Recording clip...";
-        //     const res = await fetch('/take_clip');
-        //     const text = await res.text();
-        //     document.getElementById('camera-status').innerText = text;
-        // }
-        //Test stuff______________________________________
-
-
-
-        // async function setSetpoints(originalValues) {
-        //     // Extract values from originalValues
-        //     let temperature = Number(originalValues['temperature-setpoint']);
-        //     let humidity = Number(originalValues['humidity-setpoint']);
-        //     let co2_max = Number(originalValues['co2-setpoint']);
-        //     let light_schedules = originalValues['light-schedule'] ?? [ 
-        //         { start: "08:00", end: "18:00", white: 0.5,uv: 0.5 },
-        //         { start: "01:00", end: "04:00", white: 0.5,uv: 0.5 }
-        //     ];      // Default might cause issues later
-
-        //     // --- Error checks ---
-        //     const errors = [];
-        //     if (!isNaN(temperature)) {
-        //         if (temperature <= 5 || temperature >= 40) {
-        //             errors.push("Temperature must be between 5-40 °C.");
-        //         }
-        //     } else {
-        //         temperature = undefined; // don't send if invalid
-        //     }
-
-        //     if (!isNaN(humidity)) {
-        //         if (humidity < 0 || humidity > 100) {
-        //             errors.push("Humidity must be between 0-100%.");
-        //         }
-        //     } else {
-        //         humidity = undefined;
-        //     }
-
-        //     if (!isNaN(co2_max)) { // Changed to co2_max
-        //         if (co2_max <= 0 || co2_max > 5000) {
-        //             errors.push("CO2 must be >0 and <=5000 ppm.");
-        //         }
-        //     } else {
-        //         co2_max = undefined; // Changed to co2_max
-        //     }
-
-        //     if (errors.length > 0) {
-        //         const errorMsg = errors.join(" ");
-        //         console.error("Setpoints validation errors:", errorMsg);
-        //         showErrorNotification(errorMsg);
-        //         throw new Error(errorMsg);
-        //     }
-
-        //     // --- Build JSON payload ---
-        //     const payload = {};
-        //     if (temperature !== undefined) payload.temperature = temperature;
-        //     if (humidity !== undefined) payload.humidity = humidity;
-        //     if (co2_max !== undefined) payload.co2_max = co2_max; // Changed to co2_max
-        //     if (light_schedules !== undefined) payload.light_schedules = light_schedules; // Changed to light_schedules
-
-        //     console.log("Sending payload:", payload); // Debug log
-
-        //     // --- Send to server ---
-        //     try {
-        //         const response = await fetch('/update_setpoints', { // Changed route name
-        //             method: 'POST',
-        //             headers: { 'Content-Type': 'application/json' },
-        //             body: JSON.stringify(payload)
-        //         });
-
-        //         if (!response.ok) {
-        //             const errorText = await response.text();
-        //             throw new Error(`Server returned ${response.status}: ${errorText}`);
-        //         }
-
-        //         const result = await response.json();
-        //         console.log("Setpoints updated successfully:", result);
-        //         return result;
-
-        //     } catch (error) {
-        //         console.error("Failed to set setpoints:", error);
-        //         showErrorNotification(`Failed to update setpoints: ${error.message}`);
-        //         throw error;
-        //     }
-        // }
-
 
 
         async function setSetpoints(originalValues) {
@@ -433,15 +723,13 @@
             let temperature = Number(originalValues['temperature-setpoint']);
             let humidity = Number(originalValues['humidity-setpoint']);
             let co2_max = Number(originalValues['co2-setpoint']);
-            
-            // Remove light schedules for now until you implement the UI
-            // let light_schedules = originalValues['light-schedule'];
+            let light_schedules = originalValues['light-schedule'];
 
-            // --- Error checks (same as before) ---
+            // Validation
             const errors = [];
             if (!isNaN(temperature)) {
                 if (temperature <= 5 || temperature >= 40) {
-                    errors.push("Temperature must be between 5-40 �C.");
+                    errors.push("Temperature must be between 5-40 °C.");
                 }
             } else {
                 temperature = undefined;
@@ -470,16 +758,18 @@
                 throw new Error(errorMsg);
             }
 
-            // --- Build JSON payload - ONLY include what you have ---
+            // Build JSON payload
             const payload = {};
             if (temperature !== undefined) payload.temperature = temperature;
             if (humidity !== undefined) payload.humidity = humidity;
             if (co2_max !== undefined) payload.co2_max = co2_max;
-            // Don't include light_schedules until you have the UI
+            if (light_schedules !== undefined && light_schedules.length > 0) {
+                payload.light_schedules = light_schedules;
+            }
 
             console.log("Sending payload:", JSON.stringify(payload, null, 2));
 
-            // --- Send to server ---
+            // Send to server
             try {
                 const response = await fetch('/update_setpoints', {
                     method: 'POST',
@@ -504,46 +794,20 @@
         }
 
 
+         // Helper function to update save button state
+        function updateSaveButtonState() {
+            const saveButton = document.getElementById('save-button');
+            saveButton.disabled = changedInputs.size === 0;
+            
+            const unsavedMessage = document.getElementById('unsaved-message');
+            unsavedMessage.style.display = changedInputs.size > 0 ? 'block' : 'none';
+        }
 
-
-
-
-
-
-
-
-
-
-
-
-        // async function setTemperature(temperatureSetpoint) {
-        //     temperatureSetpoint = Number(temperatureSetpoint); // ensure it's numeric
-
-        //     if ((isNaN(temperatureSetpoint) || temperatureSetpoint <= 5 || temperatureSetpoint >= 40))  {
-        //         throw new Error("Invalid temperature value value. Must be a within 5-40°C.");
-        //     }
-
-        //     try {
-        //         const response = await fetch(`/set_temp/${temperatureSetpoint}`, {method: 'POST'});
-
-        //         if (!response.ok) {
-        //             throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-        //         }
-
-        //         const result = await response.json();
-        //         console.log("Temperature set successfully:", result);
-        //         return result;
-
-        //     } catch (error) {
-        //         console.error("Failed to set temperature:", error);
-        //         showErrorNotification(`Failed to set temperature: ${error.message}`);
-        //         throw error;
-        //     }
-        // }
-
-
-        //-_________________________________________
-
+        
+        function showErrorNotification(message) {
+            console.error(message);
+            alert(message); // temporary visible feedback
+        }
 
 
         async function setTimelapseInterval(intervalValue) {
@@ -581,12 +845,32 @@
         
 
         async function refreshManual() {
-            document.getElementById('photo-status').innerText = "Capturing photo...";
+            document.getElementById('photo-status').innerText = "Turning on lights and capturing photo...";
+            
             try {
-                const res = await fetch('/take_photo');
-                const data = await res.json();
-                if (data.success) {updateImage()}
-            } catch (err) {console.error("Error taking image:", err);}
+                // Trigger photo mode for 5 seconds
+                const response = await fetch('/trigger_photo_mode', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duration: 5 })
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // Take the photo
+                    const res = await fetch('/take_photo');
+                    const data = await res.json();
+                    if (data.success) {
+                        updateImage();
+                        document.getElementById('photo-status').innerText = "Photo captured successfully!";
+                    }
+                } else {
+                    document.getElementById('photo-status').innerText = "Error: " + result.message;
+                }
+            } catch (err) {
+                console.error("Error taking image:", err);
+                document.getElementById('photo-status').innerText = "Error capturing photo";
+            }
         }
         
     
@@ -614,12 +898,11 @@
             }
         }
 
-                
 
         async function toggleTimelapse() {
             try {
                 const res = await fetch('/toggle_tl');
-                get_control_parameters();
+                getControlParameters();
                 // updateTimelapseStatus();
             } catch (err) {
                 console.error("Error toggling timelapse:", err);
@@ -631,5 +914,104 @@
         setInterval(updateImage, 6000);
         
         updateTimelapseStatus();
+
+        // Update the system status display
+        function updateSystemStatus() {
+            if (!controlData) {
+                console.log("No control data available");
+                return;
+            }
+            
+            console.log("Updating system status with:", controlData);
+            
+            try {
+                // System state
+                const systemState = controlData.system_state || 'unknown';
+                document.getElementById('system-state').textContent = systemState;
+                document.getElementById('system-state').className = `status-value ${systemState}`;
+                
+                // Photo mode - fix the property access
+                const photoMode = controlData.photo_mode ? 'Active' : 'No';
+                document.getElementById('photo-mode-status').textContent = photoMode;
+                document.getElementById('photo-mode-status').className = `status-value ${controlData.photo_mode ? 'active' : 'off'}`;
+                
+                // Peltier status - add safety checks
+                const peltier = controlData.actuator_states?.peltier || {};
+                let peltierStatus = 'Off';
+                let peltierClass = 'off';
+                
+                if (peltier.enabled && peltier.mode && peltier.mode !== 'off') {
+                    const dutyCycle = Math.round((peltier.duty_cycle || 0) * 100);
+                    peltierStatus = `${peltier.mode.charAt(0).toUpperCase() + peltier.mode.slice(1)} (${dutyCycle}%)`;
+                    peltierClass = peltier.mode;
+                }
+                document.getElementById('peltier-status').textContent = peltierStatus;
+                document.getElementById('peltier-status').className = `status-value ${peltierClass}`;
+                
+                // Humidifier - add safety check
+                const humidifierStatus = controlData.actuator_states?.humidifier ? 'On' : 'Off';
+                document.getElementById('humidifier-status').textContent = humidifierStatus;
+                document.getElementById('humidifier-status').className = `status-value ${controlData.actuator_states?.humidifier ? 'on' : 'off'}`;
+                
+                // Internal fan - add safety check
+                const internalFanStatus = controlData.actuator_states?.internal_fan ? 'On' : 'Off';
+                document.getElementById('internal-fan-status').textContent = internalFanStatus;
+                document.getElementById('internal-fan-status').className = `status-value ${controlData.actuator_states?.internal_fan ? 'on' : 'off'}`;
+                
+                // Ventilation - add safety check
+                const ventAngle = controlData.actuator_states?.servo_angle || 0;
+                const ventStatus = ventAngle > 0 ? `Open (${ventAngle}°)` : 'Closed';
+                document.getElementById('ventilation-status').textContent = ventStatus;
+                document.getElementById('ventilation-status').className = `status-value ${ventAngle > 0 ? 'on' : 'off'}`;
+                
+                // Vent fan speed - add safety check
+                const ventFanSpeed = Math.round((controlData.actuator_states?.vent_fan_speed || 0) * 100);
+                document.getElementById('vent-fan-speed').textContent = `${ventFanSpeed}%`;
+                
+                // Active light schedule
+                const now = new Date();
+                const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+                let activeSchedule = 'None';
+                
+                const lightSchedules = controlData.setpoints?.light_schedules || [];
+                if (lightSchedules.length > 0) {
+                    const active = lightSchedules.find(schedule => {
+                        return currentTime >= schedule.start && currentTime <= schedule.end;
+                    });
+                    if (active) {
+                        activeSchedule = `${active.start}-${active.end}`;
+                    }
+                }
+                document.getElementById('active-light-schedule').textContent = activeSchedule;
+                
+            } catch (error) {
+                console.error("Error updating system status:", error);
+            }
+        }
+    
+
+        async function downloadDataLog() {
+            try {
+                const response = await fetch('/download_logs');
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'mushroom_chamber_data.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    showErrorNotification('Failed to download data log');
+                }
+            } catch (error) {
+                console.error('Error downloading data log:', error);
+                showErrorNotification('Error downloading data log');
+            }
+        }
+       
     </script>
 {% endblock %}

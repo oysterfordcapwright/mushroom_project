@@ -4,6 +4,10 @@ import neopixel_spi as neopixel
 from rpi_hardware_pwm import HardwarePWM
 from gpiozero import PWMOutputDevice, DigitalOutputDevice
 from DS18B20 import get_DS_temp
+from CO2_sensor import get_CO2_data
+from DHT22 import get_DHT22_data
+import random
+import math
 
 
 # Pin Mapping with Labels
@@ -55,7 +59,7 @@ class DeviceController:
         # Setup servos on hardware PWM
         self._servo_pwm = HardwarePWM(pwm_channel=2, hz=50, chip=0)
         self._servo_pwm.start(self._angle_to_dc(0))  # start closed (default state) 
-        self._servo_angle = 90
+        self._servo_angle = 0
 
         
         # NeoPixel SPI Setup
@@ -85,8 +89,8 @@ class DeviceController:
         # Setup peltier H-bridge
         self.left_enable = DigitalOutputDevice(LEFT_ENABLE_PIN)
         self.right_enable = DigitalOutputDevice(RIGHT_ENABLE_PIN)
-        self.left_pwm = PWMOutputDevice(LEFT_PWM_PIN, frequency=1000)
-        self.right_pwm = PWMOutputDevice(RIGHT_PWM_PIN, frequency=1000)
+        self.left_pwm = PWMOutputDevice(LEFT_PWM_PIN, frequency=40)
+        self.right_pwm = PWMOutputDevice(RIGHT_PWM_PIN, frequency=40)
 
     # ================================
     # Control Functions
@@ -323,20 +327,32 @@ if __name__ == "__main__":
 
 
         # Use H-bridge
-        # dc.peltier_enable()
-        # dc.set_peltier_pwm(1.0, "cool")  # forward
-        # dc.turn_on("water_pump")
-        
-
-        # while True:
-        #     print("Temp:", get_DS_temp())
-        #     time.sleep(0.3)
+        dc.peltier_enable()
+        dc.set_peltier_pwm(1, "cool")  # forward
+        dc.turn_on("peltier_fan")
+        dc.turn_on("water_pump")
+        dc.turn_on("internal_fan")
+        # dc.turn_on("intake_fan")
+        # dc.turn_on("outflow_fan")
+        # dc.set_servo_angle(360)
+        # t=0
 
         while True:
-            dc.set_servo_angle(0)
-            time.sleep(3)
-            dc.set_servo_angle(180)
-            time.sleep(3)
+            print("Temp:", get_DS_temp())
+            CO2_data=get_CO2_data()
+            humid_data=get_DHT22_data()
+            print("CO2 Temp:", CO2_data["temperature"])
+            print("Humid Temp:", humid_data["temperature"])
+            time.sleep(2)
+        #     t=t+1
+            
+        #     dc.set_servo_angle(math.sin(t/500)*90+90)
+
+        # while True:
+        #     dc.set_servo_angle(0)
+        #     time.sleep(3)
+        #     dc.set_servo_angle(180)
+        #     time.sleep(3)
 
 
         # Cleanup

@@ -1,8 +1,9 @@
 # app.py
 from __init__ import create_app
 import threading
+import atexit
 from AUSDOM_cam import run_timelapse
-from mushroom_controller import initialize_controller
+from mushroom_controller import initialize_controller, shutdown_controller
 
 app = create_app()
 
@@ -18,7 +19,6 @@ timelapse_started = False
 controller_started = False
 first_request_handled = False
 
-
 @app.before_request
 def start_threads():
     """Start the timelapse and controller thread on first request"""
@@ -27,16 +27,19 @@ def start_threads():
         global timelapse_started
         global controller_started
 
+        if not controller_started:
+            threading.Thread(target=initialize_controller, daemon=True).start()
+            controller_started = True 
+
         if not timelapse_started:
             threading.Thread(target=run_timelapse, daemon=True).start()
             timelapse_started = True
 
-        if not controller_started:
-            threading.Thread(target=initialize_controller, daemon=True).start()
-            controller_started = True 
-        
         first_request_handled = True
 
+
+# Register shutdown to run when Python exits
+atexit.register(shutdown_controller)
 
 if __name__ == '__main__':
     # Note: No threads started here anymore

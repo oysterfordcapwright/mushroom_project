@@ -2,10 +2,12 @@ import time
 import threading
 from enum import Enum
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from datetime import datetime, time as dt_time, timedelta
 import json
 import logging
+import csv
+import os
 from simple_pid import PID
 
 # Import your existing libraries
@@ -22,15 +24,15 @@ logger = logging.getLogger(__name__)
 class SystemState(Enum):
     STANDBY = "standby"
     ACTIVE = "active"
-    MAINTENANCE = "maintenance"
     ERROR = "error"
 
 class LightSchedule:
-    def __init__(self, start_time: dt_time, end_time: dt_time, rgb: Tuple[int, int, int] = (0, 0, 0), 
-                 white_intensity: float = 0.0, uv_intensity: float = 0.0):
+    def __init__(self, start_time: dt_time, end_time: dt_time, colour: str = "off", 
+                  neopixel_intensity: float = 0.0, white_intensity: float = 0.0, uv_intensity: float = 0.0):
         self.start_time = start_time
         self.end_time = end_time
-        self.rgb = rgb
+        self.colour = colour
+        self.neopixel_intensity = neopixel_intensity
         self.white_intensity = white_intensity
         self.uv_intensity = uv_intensity
     
@@ -49,7 +51,7 @@ class ControlSetpoints:
         if self.light_schedules is None:
             # Default light schedule: 8am to 5pm
             self.light_schedules = [
-                LightSchedule(dt_time(8, 0), dt_time(17, 0), (255, 255, 255), 0.5, 0.1)
+                LightSchedule(dt_time(8, 0), dt_time(17, 0), "off", 0.0, 0.0, 0.0)
             ]
 
 class MushroomChamberController:
@@ -68,7 +70,7 @@ class MushroomChamberController:
         
         # Timing and state tracking defaults
         self.last_control_cycle = time.time()
-        self.control_interval = 5.0  # seconds
+        self.control_interval = 2.0  # seconds
         self.sensor_read_interval = 2.0
         
         # Current sensor readings with intialised values for startup
@@ -92,6 +94,12 @@ class MushroomChamberController:
         # Sensor health tracking
         self.sensor_errors = 0
         self.max_sensor_errors = 5 # This might be unnecessary / cause issues
+
+        # Data logging
+        self.log_file = "/home/luke/mushroom_project/mushroom_chamber_data.csv"
+        self.log_interval = 5  # Log every 5 seconds
+        self.last_log_time = 0
+        self.setup_data_logging()
         
         logger.info("Mushroom Chamber Controller initialized")
     
@@ -102,7 +110,7 @@ class MushroomChamberController:
             return
         
         self.running = True
-        self.state = SystemState.ACTIVE
+        # self.state = SystemState.ACTIVE 
         self.control_thread = threading.Thread(target=self._control_loop, daemon=True)
         self.control_thread.start()
         logger.info("Control system started")
@@ -148,6 +156,86 @@ class MushroomChamberController:
             except Exception as e:
                 logger.error(f"Error during shutdown: {e}")
     
+    def setup_data_logging(self):
+        """Setup CSV logging file with headers"""
+        if not os.path.exists(self.log_file):
+            with open(self.log_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    'timestamp', 'system_state', 
+                    'temp_setpoint', 'humidity_setpoint', 'co2_setpoint',
+                    'temp_probe1', 'temp_probe2', 'temp_probe3', 'temp_dht', 'temp_co2',
+                    'humidity', 'co2_ppm',
+                    'peltier_mode', 'peltier_duty', 'peltier_enabled',
+                    'humidifier', 'internal_fan',
+                    'vent_angle', 'vent_fan_speed',
+                    'active_light_schedule', 'neopixel_color', 'neopixel_intensity',
+                    'white_intensity', 'uv_intensity', 'photo_mode'
+                ])
+        logger.info(f"Data logging setup complete. Log file: {self.log_file}")
+
+    def log_system_data(self):
+        """Log current system state to CSV"""
+        current_time = time.time()
+        if current_time - self.last_log_time >= self.log_interval:
+            try:
+                with self.lock:
+                    # Get active light schedule
+                    current_time_obj = datetime.now().time()
+                    active_schedule = None
+                    active_schedule_name = "None"
+                    neopixel_color = "off"
+                    neopixel_intensity = 0
+                    white_intensity = 0
+                    uv_intensity = 0
+                    
+                    for schedule in self.setpoints.light_schedules:
+                        if schedule.is_active(current_time_obj):
+                            active_schedule = schedule
+                            active_schedule_name = f"{schedule.start_time.strftime('%H:%M')}-{schedule.end_time.strftime('%H:%M')}"
+                            neopixel_color = schedule.colour
+                            neopixel_intensity = schedule.neopixel_intensity
+                            white_intensity = schedule.white_intensity
+                            uv_intensity = schedule.uv_intensity
+                            break
+                    
+                    peltier_state = self.devices.get_peltier_state()
+                    
+                    with open(self.log_file, 'a', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow([
+                            datetime.now().isoformat(),
+                            self.state.value,
+                            self.setpoints.temperature,
+                            self.setpoints.humidity,
+                            self.setpoints.co2_max,
+                            self.current_temps.get("Probe1", 0),
+                            self.current_temps.get("Probe2", 0),
+                            self.current_temps.get("Probe3", 0),
+                            self.current_temps.get("DHT_Sensor", 0),
+                            self.current_temps.get("CO2_Sensor", 0),
+                            self.current_humidity,
+                            self.current_co2,
+                            peltier_state['mode'],
+                            peltier_state['duty_cycle'],
+                            peltier_state['enabled'],
+                            bool(self.devices.get_state("humidifier")),
+                            bool(self.devices.get_state("internal_fan")),
+                            self.vent_angle,
+                            self.vent_fan_speed,
+                            active_schedule_name,
+                            neopixel_color,
+                            neopixel_intensity,
+                            white_intensity,
+                            uv_intensity,
+                            self.photo_mode_active
+                        ])
+                
+                self.last_log_time = current_time
+                
+            except Exception as e:
+                logger.error(f"Error logging system data: {e}")
+
     def _control_loop(self):
         """Main control loop running in background thread"""
         last_sensor_read = 0
@@ -170,6 +258,9 @@ class MushroomChamberController:
                         self._control_lights()
                     self.last_control_cycle = current_time
                 
+                # Log system data
+                self.log_system_data()
+
                 # Handle photo mode timeout
                 if self.photo_mode_active and time.time() > self.photo_mode_timeout:
                     self._end_photo_mode()
@@ -234,7 +325,7 @@ class MushroomChamberController:
     
     def _control_temperature(self):
         """PID control for temperature using peltier"""
-        current_temp = self.current_temps["Probe2"]  # Use Probe2 (inside chamber)
+        current_temp = self.current_temps["DHT_Sensor"]  # Use DHT temp reading (inside chamber)
         
         with self.lock:
             # Update PID setpoint
@@ -268,12 +359,12 @@ class MushroomChamberController:
         with self.lock:
             humidity_error = self.setpoints.humidity - self.current_humidity
             
-            if humidity_error > 5:  # Too dry -> add humidity
+            if humidity_error > 40:  # Too dry -> add humidity
                 self.devices.turn_on("humidifier")
                 # Ensure internal fan is on for distribution
                 self.devices.turn_on("internal_fan")
                 
-            elif humidity_error < -5:  # Too humid -> reduce humidity
+            elif humidity_error < -40:  # Too humid -> reduce humidity
                 self.devices.turn_off("humidifier")
                 # Turn off internal fan to allow condensation
                 self.devices.turn_off("internal_fan")
@@ -327,10 +418,11 @@ class MushroomChamberController:
                     break
             
             if active_schedule:
-                # Set NeoPixel color
+                # Set NeoPixel color and intensity
                 try:
                     # Fixed colours for now, could add custom RGB, would need to extend device_control
-                    self.devices.set_neopixel_color("white")                                            # Might cause issue (rgb input to shedule colours is being ignored)
+                    self.devices.set_neopixel_color(active_schedule.colour) 
+                    self.devices.set_neopixel_brightness(active_schedule.neopixel_intensity)                                           # Might cause issue (rgb input to shedule colours is being ignored)
                     # Set white LEDs
                     self.devices.set_pwm("white_leds", active_schedule.white_intensity * 100)
                     # Set UV LEDs
@@ -379,7 +471,8 @@ class MushroomChamberController:
                         {
                             "start": s.start_time.strftime("%H:%M"),
                             "end": s.end_time.strftime("%H:%M"),
-                            "rgb": s.rgb,
+                            "colour": s.colour,
+                            "neopixel": s.neopixel_intensity,
                             "white": s.white_intensity,
                             "uv": s.uv_intensity
                         } for s in self.setpoints.light_schedules
@@ -420,15 +513,16 @@ class MushroomChamberController:
             for schedule in schedules:
                 start = datetime.strptime(schedule["start"], "%H:%M").time()
                 end = datetime.strptime(schedule["end"], "%H:%M").time()
-                rgb = tuple(schedule["rgb"])
+                colour = schedule["colour"]
+                neopixel = schedule.get("neopixel", 0.0)
                 white = schedule.get("white", 0.0)
                 uv = schedule.get("uv", 0.0)
-                new_schedules.append(LightSchedule(start, end, rgb, white, uv))
+                new_schedules.append(LightSchedule(start, end, colour,neopixel, white, uv))
             
             self.setpoints.light_schedules = new_schedules
             logger.info(f"Light schedules updated: {len(schedules)} schedules")
     
-    def set_light_wavelengths(self, rgb: Tuple[int, int, int], white_intensity: float, uv_intensity: float):
+    def set_light_wavelengths(self, colour: str, neopixel_intensity: float, white_intensity: float, uv_intensity: float):
         """Set manual light wavelengths and intensities"""
         with self.lock:
             # This could override schedules or work with them
@@ -436,12 +530,12 @@ class MushroomChamberController:
             current_time = datetime.now().time()
             end_time = (datetime.now() + timedelta(hours=1)).time()
             
-            temp_schedule = LightSchedule(current_time, end_time, rgb, white_intensity, uv_intensity)
+            temp_schedule = LightSchedule(current_time, end_time, colour, neopixel_intensity, white_intensity, uv_intensity)
             self.setpoints.light_schedules = [temp_schedule]
             
-            logger.info(f"Light wavelengths set: RGB{rgb}, White:{white_intensity}, UV:{uv_intensity}")
+            logger.info(f"Light wavelengths set: Colour:{colour}, NeoPixel:{neopixel_intensity}, White:{white_intensity}, UV:{uv_intensity}")
     
-    def trigger_photo_mode(self, duration: int = 30):
+    def trigger_photo_mode(self, duration: int = 10):
         """
         Trigger photo mode for timelapse photography
         duration: seconds to keep lights on for photo

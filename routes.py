@@ -1,18 +1,15 @@
 # routes.py
-from flask import Blueprint, render_template, jsonify, send_from_directory, current_app, request
+from flask import Blueprint, render_template, jsonify, send_from_directory, send_file, current_app, request
 from flask_login import login_required, current_user
 from functools import wraps
 from datetime import datetime
 from __init__ import limiter
 import subprocess
 import ffmpeg
+import os
 
 from AUSDOM_cam import update_latest_img, capture_img, data_lock, timelapse_data, toggle_timelapse, set_tl_interval
-from mushroom_controller import chamber_controller
-
-# from CO2_sensor import read_all 
-# from DS18B20 import get_DS_temp
-# from DHT22 import get_DHT22_data
+from mushroom_controller import chamber_controller, SystemState
 
 bp = Blueprint('main', __name__)
 
@@ -40,35 +37,8 @@ def take_clip():
     except subprocess.CalledProcessError:
         return "Error: Could not take clip or upload."
         
-# @bp.route('/DS18B20_sensor')
-# @login_required
-# def DS18B20_sensor():
-#     temps = get_DS_temp()
-#     return temps
 
-# @bp.route('/DHT22_sensor')
-# @login_required
-# def DHT22_sensor():
-#     humidity_data = get_DHT22_data()
-#     if humidity_data:
-#         return humidity_data
-#     return {"error": "Failed to read DHT22"}
-
-
-# @bp.route('/co2_sensor')
-# @login_required
-# def co2_sensor():
-#     try:
-#         data = read_all()
-#         return {
-#             "co2": data["co2"],
-#             "temperature": data["temperature"],
-#         }
-#     except Exception as e:
-#         return {"error": str(e)}, 500
-
-
-# Test sensor routes to use the controller
+# Sensor routes to using the controller
 @bp.route('/DS18B20_sensor')
 @login_required
 def DS18B20_sensor():
@@ -89,9 +59,6 @@ def co2_sensor():
     """Get CO2 data from controller"""
     sensor_data = chamber_controller.get_sensor_data()
     return jsonify({"co2": sensor_data["co2"]})
-
-
-
 
 @bp.route('/send_latest_image')
 @login_required
@@ -201,30 +168,6 @@ def update_setpoints():
     except Exception as e:
         return jsonify({"status": "error", "message": f"Server error: {str(e)}"}), 500
 
-
-
-@bp.route('/set_temp/<float:setpoint>', methods=['POST'])
-@admin_required
-def set_temp(setpoint):
-    """Set temperature setpoint"""
-    chamber_controller.set_temperature(setpoint)
-    return jsonify({"status": "success", "temperature": setpoint})
-
-
-@bp.route('/set_humidity', methods=['POST'])
-@admin_required
-def set_humidity():
-    """Set humidity setpoint"""
-    try:
-        humidity = float(request.json.get('humidity'))
-        chamber_controller.set_humidity(humidity)
-        return jsonify({"status": "success", "humidity": humidity})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@bp.route('/set_CO2', methods=['POST'])
-@admin_required
-def set_CO2():
     """Set CO2 level"""
     try:
         co2_max = float(request.json.get('co2_max'))
@@ -262,7 +205,7 @@ def set_light_wavelength():
 def emergency_stop():
     """Emergency stop everything"""
     chamber_controller.emergency_stop()
-    return "Emergency stop activated!"
+    return "Emergency stop activated"
 
 @bp.route('/control_status')
 @login_required
@@ -271,44 +214,63 @@ def control_status():
     status = chamber_controller.get_control_status()
     return jsonify(status)
 
+@bp.route('/toggle_lights', methods=['POST'])
+@admin_required
+def toggle_lights():
+    """Toggle lights on/off manually"""
+    try:
+        # This would need to be implemented in your controller
+        # For now, return a placeholder response
+        return jsonify({
+            "status": "success", 
+            "message": "Lights toggled",
+            "lights_on": True  # You'd track this state in your controller
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
+@bp.route('/trigger_photo_mode', methods=['POST'])
+@admin_required
+def trigger_photo_mode():
+    """Trigger photo mode for timelapse"""
+    try:
+        data = request.get_json()
+        duration = data.get('duration', 5)
+        chamber_controller.trigger_photo_mode(duration)
+        return jsonify({
+            "status": "success", 
+            "message": f"Photo mode activated for {duration} seconds"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
-# @bp.route('/adjust_temp')
-# @admin_required
-# def adjust_temp():
-#     return "Temperature adjustment coming soon!"
+@bp.route('/download_logs')
+@login_required
+def download_logs():
+    """Download the system data log as CSV"""
+    try:
+        log_file = "/home/luke/mushroom_project/mushroom_chamber_data.csv"
+        if os.path.exists(log_file):
+            return send_file(log_file, as_attachment=True, download_name='mushroom_chamber_data.csv')
+        else:
+            return jsonify({"error": "No log file found"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Error downloading logs: {str(e)}"}), 500
+    
 
-# @bp.route('/adjust_humidity')
-# @admin_required
-# def adjust_humidity():
-#     return "Humidity adjustment coming soon!"
-
-# @bp.route('/toggle_fan')
-# @admin_required
-# def toggle_fan():
-#     return "Fan control coming soon!"
-
-# @bp.route('/toggle_light')
-# @admin_required
-# def toggle_light():
-#     return "Light control coming soon!"
-
-# @bp.route('/set_light_schedule')
-# @admin_required
-# def set_light_schedule():
-#     return "Light scheduling coming soon!"
-
-# @bp.route('/emergency_stop')
-# @admin_required
-# def emergency_stop():
-#     return "Emergency stop functionality coming soon!"
-
-# @bp.route('/update_settings')
-# @admin_required
-# def update_settings():
-#     return "Settings update coming soon!"
-
-# @bp.route('/view_logs')
-# @admin_required
-# def view_logs():
-#     return "System logs coming soon!"
+@bp.route('/toggle_system_state', methods=['POST'])
+@admin_required
+def toggle_system_state():
+    """Toggle between active and standby states"""
+    try:
+        current_state = chamber_controller.state
+        new_state = SystemState.STANDBY if current_state == SystemState.ACTIVE else SystemState.ACTIVE
+        chamber_controller.set_system_state(new_state.value)
+        
+        return jsonify({
+            "status": "success",
+            "message": f"System {new_state.value}",
+            "new_state": new_state.value
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400

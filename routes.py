@@ -43,15 +43,22 @@ def take_clip():
 @login_required
 def DS18B20_sensor():
     """Get temperature data from controller"""
-    sensor_data = chamber_controller.get_sensor_data()
-    return jsonify(sensor_data["temperatures"])
+    try:
+        sensor_data = chamber_controller.get_sensor_data()
+        return jsonify(sensor_data["temperatures"])
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+    
 
 @bp.route('/DHT22_sensor')
 @login_required
 def DHT22_sensor():
     """Get humidity data from controller"""
-    sensor_data = chamber_controller.get_sensor_data()
-    return jsonify({"humidity": sensor_data["humidity"]})
+    try:
+        sensor_data = chamber_controller.get_sensor_data()
+        return jsonify({"humidity": sensor_data["humidity"]})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 @bp.route('/co2_sensor')
 @login_required

@@ -327,11 +327,11 @@ if __name__ == "__main__":
 
 
         # Use H-bridge
-        dc.peltier_enable()
-        dc.set_peltier_pwm(1, "cool")  # forward
-        dc.turn_on("peltier_fan")
-        dc.turn_on("water_pump")
-        dc.turn_on("internal_fan")
+        # dc.peltier_enable()
+        # dc.set_peltier_pwm(1, "cool")  # forward
+        # dc.turn_on("peltier_fan")
+        # dc.turn_on("water_pump")
+        # dc.turn_on("internal_fan")
         # dc.turn_on("intake_fan")
         # dc.turn_on("outflow_fan")
         # dc.set_servo_angle(360)

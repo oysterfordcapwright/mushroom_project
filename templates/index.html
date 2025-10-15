@@ -728,24 +728,24 @@
             // Validation
             const errors = [];
             if (!isNaN(temperature)) {
-                if (temperature <= 5 || temperature >= 40) {
-                    errors.push("Temperature must be between 5-40 °C.");
+                if (temperature <= 10 || temperature >= 30) {
+                    errors.push("Temperature must be between 10-30 °C.");
                 }
             } else {
                 temperature = undefined;
             }
 
             if (!isNaN(humidity)) {
-                if (humidity < 0 || humidity > 100) {
-                    errors.push("Humidity must be between 0-100%.");
+                if (humidity < 30 || humidity > 95) {
+                    errors.push("Humidity must be between 30-95%.");
                 }
             } else {
                 humidity = undefined;
             }
 
             if (!isNaN(co2_max)) {
-                if (co2_max <= 0 || co2_max > 5000) {
-                    errors.push("CO2 must be >0 and <=5000 ppm.");
+                if (co2_max <= 300 || co2_max > 5000) {
+                    errors.push("CO2 must be >300 and <=5000 ppm.");
                 }
             } else {
                 co2_max = undefined;

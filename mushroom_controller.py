@@ -60,9 +60,23 @@ class MushroomChamberController:
         self.devices = DeviceController()
         self.setpoints = ControlSetpoints()
         
-        # Control parameters defaults
-        self.temp_pid = PID(2.0, 0.1, 0.5, setpoint=self.setpoints.temperature)
-        self.temp_pid.output_limits = (-1.0, 1.0)  # Full range for heating/cooling
+        # Control temp parameters defaults
+        self.temp_control_state = False
+        self.temp_pid = PID(0.9, 0.001, 0.5, setpoint=self.setpoints.temperature)
+        self.temp_pid.output_limits = (-1.0, 0.3)  # Full range for heating/cooling
+        self.temp_pid.auto_mode = True      # Enable anti-windup
+        self.steady_state_bias = 0.0  # Will learn the required maintenance power
+        self.last_stable_time = None
+
+        # Humidity control state
+        self.humidity_control_state = False
+        self.humidity_override_active = False
+        self.humidity_override_start_time = None
+        self.ventilation_phase_start_time = None
+        self.humidity_history = []  # Track humidity trends
+
+        # CO2 control state
+        self.CO2_control_state = False
         
         # Ventilation control defaults
         self.vent_angle = 0  # 0=closed, 180=fully open
@@ -305,7 +319,7 @@ class MushroomChamberController:
                 if dht_data:
                     self.current_humidity = dht_data["humidity"]
                     # Update internal temperature with DHT22 if available
-                    self.current_temps["DHT_Sensor"] = dht_data["temperature"]      #dht_data.get("temperature", self.current_temps["Probe2"])
+                    self.current_temps["DHT_Sensor"] = round(dht_data["temperature"]-0.8,3)     #dht sensor reads wtih 0.8°C offset
                     self.sensor_errors = 0  # Reset error counter on success (might cause issue)
                 else:
                     self.sensor_errors += 1
@@ -326,82 +340,306 @@ class MushroomChamberController:
     def _control_temperature(self):
         """PID control for temperature using peltier"""
         current_temp = self.current_temps["DHT_Sensor"]  # Use DHT temp reading (inside chamber)
-        
+
+        if self._check_temperature_safety():
+            return  # Exit if safety limits triggered
+
         with self.lock:
             # Update PID setpoint
             self.temp_pid.setpoint = self.setpoints.temperature
             
+            # Only allow integral accumulation when we're not at limits
+            temp_error = current_temp - self.setpoints.temperature
+            
+            # Disable integral when we're close to setpoint and still moving fast
+            if abs(temp_error) < 0.1:
+                # Temporary disable integral to prevent windup
+                original_ki = self.temp_pid.Ki
+                self.temp_pid.Ki = 0
+                pid_output = self.temp_pid(current_temp)
+                self.temp_pid.Ki = original_ki
+            else:
+                pid_output = self.temp_pid(current_temp)
+            
             # Calculate PID output
-            pid_output = self.temp_pid(current_temp)
+            # pid_output = self.temp_pid(current_temp)
             
             # Determine heating/cooling mode
-            if abs(pid_output) < 0.1:  # Deadband
-                self.devices.peltier_disable()
-                self.devices.set_peltier_pwm(0, "off")
-                self.devices.turn_off("peltier_fan")
-                self.devices.turn_off("water_pump")
-            else:
+            if abs(pid_output) > 0.01:  # Deadband
+                
                 # Enable peltier system
                 self.devices.peltier_enable()
                 self.devices.turn_on("peltier_fan")
                 self.devices.turn_on("water_pump")
+                self.devices.turn_on("internal_fan")
+                self.temp_control_state = True
                 
                 if pid_output > 0:  # Need heating
-                    self.devices.set_peltier_pwm(pid_output, "heat")        # May need to switch heating vs cooling (may cause issue)
+                    self.devices.set_peltier_pwm(pid_output, "heat") 
                 else:  # Need cooling
                     self.devices.set_peltier_pwm(abs(pid_output), "cool")
+
+            elif self.temp_control_state == True:
+                self.devices.peltier_disable()
+                self.devices.set_peltier_pwm(0, "off")
+                self.devices.turn_off("peltier_fan")
+                self.devices.turn_off("water_pump")
+                self.devices.turn_off("internal_fan")
+                self.temp_control_state = False
+                
     
+    def _check_temperature_safety(self):
+        """Check and enforce temperature safety limits"""
+        safety_triggered = False
+        
+        # Peltier temperature safety (probe 3)
+        if self.current_temps.get("Probe3", 0) > 40.0:
+            self.devices.peltier_disable()
+            self.devices.set_peltier_pwm(0, "off")
+            print("SAFETY: Peltier disabled - temperature exceeded 40°C")
+            safety_triggered = True
+        
+        # Coil temperature safety (probe 2)  
+        if self.current_temps.get("Probe2", 0) > 30.0:
+            self.devices.peltier_disable()
+            self.devices.set_peltier_pwm(0, "off")
+            print("SAFETY: Coil temperature exceeded 30°C")
+            safety_triggered = True
+        
+        return safety_triggered
+
     def _control_humidity(self):
-        """Control humidity using humidifier and condensation, uses bang-bang control"""
+        """Control humidity using prioritized approach: ventilation -> evaporative cooling -> natural absorption"""
         if not self.current_humidity:
+            return
+        
+        # Check if we're in cooldown period after natural absorption
+        current_time = time.time()
+        if hasattr(self, 'humidity_cooldown_until') and current_time < self.humidity_cooldown_until:
+            remaining = (self.humidity_cooldown_until - current_time) / 60
+            print(f"HUMIDITY: In cooldown period - {remaining:.1f} minutes remaining")
             return
         
         with self.lock:
             humidity_error = self.setpoints.humidity - self.current_humidity
             
-            if humidity_error > 40:  # Too dry -> add humidity
+            if humidity_error > 50:  # Too dry -> add humidity (with hysteresis)
                 self.devices.turn_on("humidifier")
-                # Ensure internal fan is on for distribution
-                self.devices.turn_on("internal_fan")
+                self.devices.turn_on("internal_fan")  # Distribute humidity
+                # Reset all humidity control states
+                self.humidity_override_active = False
+                self.humidity_override_start_time = None
+                self.ventilation_phase_start_time = None
+                self.humidity_control_state = True
+                # Clear any cooldown since now adding humidity
+                if hasattr(self, 'humidity_cooldown_until'):
+                    delattr(self, 'humidity_cooldown_until')
+                print("HUMIDITY: Adding humidity - humidifier ON")
                 
-            elif humidity_error < -40:  # Too humid -> reduce humidity
+            elif humidity_error < -50:  # Too humid -> reduce humidity (with hysteresis)
+                self._reduce_humidity_prioritized()
+                self.humidity_control_state = True
+            elif self.humidity_control_state == True:
+                # Within acceptable range
                 self.devices.turn_off("humidifier")
-                # Turn off internal fan to allow condensation
                 self.devices.turn_off("internal_fan")
-                # Brief cooling without fan to condense moisture                    # Currently trying to use peltier to remove moisture, might cause issues
-                if self.current_temps["Probe2"] > self.setpoints.temperature - 2:   #
-                    self.devices.peltier_enable()                                   #
-                    self.devices.set_peltier_pwm(1, "cool")                         # The control is looped every 5 seconds so this should be kind of like 70% duty cooling
-                    time.sleep(3.5)                                                 #
-                    self.devices.set_peltier_pwm(0, "off")                          #
-            else:
-                self.devices.turn_off("humidifier")
-                self.devices.turn_on("internal_fan")  # Normal circulation
+                self.devices.set_servo_angle(0)
+                self.devices.turn_off("intake_fan")
+                self.devices.turn_off("outflow_fan")
+                # Reset all humidity control states
+                self.humidity_override_active = False
+                self.humidity_override_start_time = None
+                self.ventilation_phase_start_time = None
+                self.humidity_control_state = False
+
     
+
+    def _reduce_humidity_prioritized(self):
+        """Prioritized approach to reduce humidity with time-based switching"""
+        current_time = time.time()
+        
+        # Step 1: Try ventilation first (unless already in cooling phase)
+        if not self.humidity_override_active:
+            # Check if we're just starting ventilation phase
+            if self.ventilation_phase_start_time is None:
+                self.ventilation_phase_start_time = current_time
+                print("HUMIDITY: Starting ventilation phase to reduce humidity")
+            
+            # Set ventilation proportional to humidity error
+            self._set_ventilation_for_humidity()
+            
+            # Check if ventilation has been running for 2 minutes without effect
+            if current_time - self.ventilation_phase_start_time >= 120:  # 2 minutes
+                if not self._humidity_decreasing():
+                    # Ventilation not working, move to evaporative cooling
+                    self.humidity_override_active = True
+                    self.humidity_override_start_time = current_time
+                    self.ventilation_phase_start_time = None
+                    print("HUMIDITY: Ventilation ineffective after 2 minutes, switching to evaporative cooling")
+                else:
+                    # Ventilation is working, reset timer and continue
+                    self.ventilation_phase_start_time = current_time
+                    print("HUMIDITY: Ventilation effective, continuing...")
+            return
+        
+        # Step 2: Evaporative cooling phase
+        if self.humidity_override_active:
+            # Check if we should continue evaporative cooling
+            if current_time - self.humidity_override_start_time < 120:  # 2 minutes
+                if not self._humidity_decreasing():
+                    # Use peltier for cooling to condense moisture
+                    if not self._check_temperature_safety():  # Only if safe
+                        self.devices.peltier_enable()
+                        self.devices.set_peltier_pwm(1.0, "cool")  # Max cooling
+                        self.devices.turn_on("peltier_fan")
+                        self.devices.turn_on("water_pump")
+                        self.devices.turn_off("humidifier")
+                        self.devices.turn_off("internal_fan")
+                        self.devices.set_servo_angle(0)
+                        self.devices.turn_off("intake_fan")
+                        self.devices.turn_off("outflow_fan")
+                        print("HUMIDITY: Active evaporative cooling")
+                    else:
+                        print("HUMIDITY: Evaporative cooling blocked by temperature safety")
+                else:
+                    # Evaporative cooling is working, continue
+                    print("HUMIDITY: Evaporative cooling effective")
+            else:
+                # Step 3: 20 minutes passed, release control and start cooldown
+                self.humidity_override_active = False
+                self.humidity_override_start_time = None
+                self.ventilation_phase_start_time = None
+                
+                # Start cooldown period - wait 3 hours before trying again
+                cooldown_hours = 3
+                self.humidity_cooldown_until = current_time + (cooldown_hours * 3600)
+                
+                print(f"HUMIDITY: 20 minutes elapsed - releasing control, cooldown for {cooldown_hours} hours")
+                print("HUMIDITY: Letting mushrooms absorb humidity naturally")
+
+    def _set_ventilation_for_humidity(self):
+        """Set ventilation opening proportional to humidity error with minimum opening"""
+        # Calculate how much too humid we are (positive value = too humid)
+        humidity_excess = max(0, self.current_humidity - self.setpoints.humidity)
+        
+        # Proportional control: more humidity error = more ventilation
+        # Scale from minimum (30% open) to maximum (100% open) based on humidity excess
+        max_humidity_excess = 8.0  # Consider 8% over setpoint as maximum
+        
+        # Calculate vent ratio: 0.3 (30% open) to 1.0 (100% open)
+        vent_ratio = 0.3 + (min(humidity_excess, max_humidity_excess) / max_humidity_excess) * 0.7
+        
+        # Convert to angle (0° = closed, 180° = fully open)
+        self.vent_angle = int(180 * vent_ratio)
+        print(self.vent_angle)
+        
+        # Fan speed proportional to vent opening (minimum 30% speed)
+        self.vent_fan_speed = max(0.3, vent_ratio)
+        
+        # Apply the changes
+        self.devices.set_servo_angle(self.vent_angle)
+        self.devices.set_pwm("intake_fan", self.vent_fan_speed)
+        self.devices.set_pwm("outflow_fan", self.vent_fan_speed)
+        
+        print(f"HUMIDITY: Humidity {humidity_excess:.1f}% over setpoint, vents {vent_ratio*100:.0f}% open")
+
+    def _humidity_decreasing(self):
+        """Check if humidity shows signs of decreasing over recent readings"""
+        # Store humidity history (keep last 6 readings = ~30 seconds at 5s intervals)
+        if not hasattr(self, 'humidity_history'):
+            self.humidity_history = []
+        
+        self.humidity_history.append(self.current_humidity)
+        # Keep only recent history (last 6 readings)
+        if len(self.humidity_history) > 6:
+            self.humidity_history.pop(0)
+        
+        # Need at least 3 readings to determine trend
+        if len(self.humidity_history) < 3:
+            return True  # Not enough data, assume it's working
+        
+        # Calculate recent trend vs previous trend
+        recent_readings = self.humidity_history[-3:]  # Last 3 readings
+        previous_readings = self.humidity_history[-6:-3] if len(self.humidity_history) >= 6 else recent_readings
+        
+        recent_avg = sum(recent_readings) / len(recent_readings)
+        previous_avg = sum(previous_readings) / len(previous_readings)
+        
+        # Consider it decreasing if recent average is at least 0.5% lower than previous
+        return recent_avg <= (previous_avg - 0.2)
+
     def _control_co2(self):
-        """Control CO2 levels using ventilation"""
+        """Control CO2 levels using ventilation with minimum opening limit"""
         if not self.current_co2:
+            return
+        
+        # If humidity control is actively managing ventilation, don't override it
+        if self.humidity_override_active or self.ventilation_phase_start_time is not None:
+            print(f"CO2: Ventilation controlled by humidity system (vent_angle: {self.vent_angle}°)")
             return
         
         with self.lock:
             co2_error = self.current_co2 - self.setpoints.co2_max
             
             if co2_error > 0:  # CO2 too high
-                # Calculate vent opening based on CO2 level
-                vent_ratio = min(1.0, co2_error / 500.0)  # Scale with error    might neet to add a max(0.1...) case since fans might not work this low (might cause issues)
+                # Calculate vent opening based on CO2 level with minimum 30% open
+                vent_ratio = min(1.0, co2_error / 500.0)  # Scale with error
+                
+                # Apply minimum opening limit (70% closed max = 30% open min)
+                min_vent_ratio = 0.3  # 30% open minimum
+                vent_ratio = max(vent_ratio, min_vent_ratio)
+                
                 self.vent_angle = int(180 * vent_ratio)
-                self.vent_fan_speed = max(0.4,vent_ratio)
+                self.vent_fan_speed = max(0.3, vent_ratio)
                 
                 self.devices.set_servo_angle(self.vent_angle)
                 self.devices.set_pwm("intake_fan", self.vent_fan_speed)
                 self.devices.set_pwm("outflow_fan", self.vent_fan_speed)
-                
+                self.CO2_control_state = True
+
+                print(f"CO2: High CO2 ({self.current_co2} ppm), vents {vent_ratio*100:.0f}% open")
+                    
             else:  # CO2 within limits
-                self.vent_angle = 0
-                self.vent_fan_speed = 0
-                self.devices.set_servo_angle(0)
-                self.devices.turn_off("intake_fan")
-                self.devices.turn_off("outflow_fan")
+                if self.CO2_control_state:
+                    self.vent_angle = 0
+                    self.vent_fan_speed = 0
+                    self.devices.set_servo_angle(0)
+                    self.devices.turn_off("intake_fan")
+                    self.devices.turn_off("outflow_fan")
+                    self.CO2_control_state = False
+                # else:
+                #     # Keep ventilation at minimum for humidity control
+                #     min_angle = 54  # 30% open (180 * 0.3)
+                #     self.vent_angle = min_angle
+                #     self.vent_fan_speed = 0.3
+                #     self.devices.set_servo_angle(min_angle)
+                #     self.devices.set_pwm("intake_fan", 0.3)
+                #     self.devices.set_pwm("outflow_fan", 0.3)
+
+    # def _control_co2(self):
+    #     """Control CO2 levels using ventilation"""
+    #     if not self.current_co2:
+    #         return
+        
+    #     with self.lock:
+    #         co2_error = self.current_co2 - self.setpoints.co2_max
+            
+    #         if co2_error > 0:  # CO2 too high
+    #             # Calculate vent opening based on CO2 level
+    #             vent_ratio = min(1.0, co2_error / 500.0)  # Scale with error    might neet to add a max(0.1...) case since fans might not work this low (might cause issues)
+    #             self.vent_angle = int(180 * vent_ratio)
+    #             self.vent_fan_speed = max(0.4,vent_ratio)
+                
+    #             self.devices.set_servo_angle(self.vent_angle)
+    #             self.devices.set_pwm("intake_fan", self.vent_fan_speed)
+    #             self.devices.set_pwm("outflow_fan", self.vent_fan_speed)
+                
+    #         else:  # CO2 within limits
+    #             self.vent_angle = 0
+    #             self.vent_fan_speed = 0
+    #             self.devices.set_servo_angle(0)
+    #             self.devices.turn_off("intake_fan")
+    #             self.devices.turn_off("outflow_fan")
     
     def _control_lights(self):
         """Control lights based on schedule or photo mode"""

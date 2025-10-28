@@ -10,9 +10,7 @@ import csv
 import os
 from simple_pid import PID
 
-# Import your existing libraries
 from device_control import DeviceController
-# from sensors import get_DS_temp, get_CO2_ppm, get_DHT22_data
 from CO2_sensor import get_CO2_data
 from DS18B20 import get_DS_temp
 from DHT22 import get_DHT22_data
@@ -59,17 +57,22 @@ class MushroomChamberController:
         self.state = SystemState.STANDBY
         self.devices = DeviceController()
         self.setpoints = ControlSetpoints()
+        self.system_start_time = None
         
         # Control temp parameters defaults
         self.temp_control_state = False
-        self.temp_pid = PID(0.9, 0.001, 0.5, setpoint=self.setpoints.temperature)
-        self.temp_pid.output_limits = (-1.0, 0.3)  # Full range for heating/cooling
+        self.temp_pid = PID(0.9, 0.0008, 0.5, setpoint=self.setpoints.temperature)
+        self.temp_pid.output_limits = (-1.0, 0.13)  # Full range for heating/cooling
         self.temp_pid.auto_mode = True      # Enable anti-windup
-        self.steady_state_bias = 0.0  # Will learn the required maintenance power
+        self.steady_state_bias = 0.0  
         self.last_stable_time = None
+        self.temperature_stable_start_time = None
+        self.temperature_stable = False
 
         # Humidity control state
         self.humidity_control_state = False
+        self.humidifier_on_time = None  
+        self.humidifier_runtime_limit = 5400  # 1 hour 30 min in seconds
         self.humidity_override_active = False
         self.humidity_override_start_time = None
         self.ventilation_phase_start_time = None
@@ -88,7 +91,7 @@ class MushroomChamberController:
         self.sensor_read_interval = 2.0
         
         # Current sensor readings with intialised values for startup
-        self.current_temps = {"Probe1": 0.0, "Probe2": 0.0, "Probe3": 0.0, "DHT_Sensor":0.0, "CO2_Sensor":0.0,}  # Should match sensor names
+        self.current_temps = {"Probe1": 0.0, "Probe2": 0.0, "Probe3": 0.0, "DHT_Sensor":0.0, "CO2_Sensor":0.0,}
         self.current_humidity = 0.0
         self.current_co2 = 0.0
         
@@ -107,11 +110,11 @@ class MushroomChamberController:
         
         # Sensor health tracking
         self.sensor_errors = 0
-        self.max_sensor_errors = 5 # This might be unnecessary / cause issues
+        self.max_sensor_errors = 5 
 
         # Data logging
         self.log_file = "/home/luke/mushroom_project/mushroom_chamber_data.csv"
-        self.log_interval = 5  # Log every 5 seconds
+        self.log_interval = 10  # Log every 10 sec
         self.last_log_time = 0
         self.setup_data_logging()
         
@@ -124,7 +127,6 @@ class MushroomChamberController:
             return
         
         self.running = True
-        # self.state = SystemState.ACTIVE 
         self.control_thread = threading.Thread(target=self._control_loop, daemon=True)
         self.control_thread.start()
         logger.info("Control system started")
@@ -296,9 +298,8 @@ class MushroomChamberController:
                     # Mapped to the specific probe names
                     temp_keys = list(ds_temps.keys())
                     if len(temp_keys) >= 3:
-                        # Order is consistent: Probe1, Probe2, Probe3
                         self.current_temps["Probe1"] = ds_temps[temp_keys[0]]  # Hot side of peltier
-                        self.current_temps["Probe2"] = ds_temps[temp_keys[1]]  # Inside chamber
+                        self.current_temps["Probe2"] = round(ds_temps[temp_keys[1]]+0.2,4)  # Inside chamber
                         self.current_temps["Probe3"] = ds_temps[temp_keys[2]]  # Outside temperature
             except Exception as e:
                 logger.warning(f"Error reading DS18B20: {e}")
@@ -319,8 +320,8 @@ class MushroomChamberController:
                 if dht_data:
                     self.current_humidity = dht_data["humidity"]
                     # Update internal temperature with DHT22 if available
-                    self.current_temps["DHT_Sensor"] = round(dht_data["temperature"]-0.8,3)     #dht sensor reads wtih 0.8°C offset
-                    self.sensor_errors = 0  # Reset error counter on success (might cause issue)
+                    self.current_temps["DHT_Sensor"] = round(dht_data["temperature"]-0.7,3)     #dht sensor reads wtih 0.7°C offset
+                    self.sensor_errors = 0  
                 else:
                     self.sensor_errors += 1
             except Exception as e:
@@ -329,7 +330,7 @@ class MushroomChamberController:
             
             # If too many sensor errors, go to error state
             if self.sensor_errors >= self.max_sensor_errors:
-                logger.error("Too many sensor errors, entering error state")        # this all might cause issues
+                logger.error("Too many sensor errors, entering error state")        
                 self.state = SystemState.ERROR
                 self._add_error("Critical: Too many sensor errors")
                 
@@ -348,24 +349,41 @@ class MushroomChamberController:
             # Update PID setpoint
             self.temp_pid.setpoint = self.setpoints.temperature
             
-            # Only allow integral accumulation when we're not at limits
-            temp_error = current_temp - self.setpoints.temperature
-            
-            # Disable integral when we're close to setpoint and still moving fast
-            if abs(temp_error) < 0.1:
-                # Temporary disable integral to prevent windup
-                original_ki = self.temp_pid.Ki
-                self.temp_pid.Ki = 0
-                pid_output = self.temp_pid(current_temp)
-                self.temp_pid.Ki = original_ki
-            else:
-                pid_output = self.temp_pid(current_temp)
-            
             # Calculate PID output
-            # pid_output = self.temp_pid(current_temp)
+            pid_output = self.temp_pid(current_temp)
+
+            # Manual bias based on temperature difference from ambient
+            ambient_temp = self.current_temps.get("Probe1", 20)  # Outside temp
+            temp_diff = self.setpoints.temperature - ambient_temp
+
+            if temp_diff > 0:  # Heating needed
+                manual_bias = min(0.09, temp_diff * 0.02)  # 2% per °C above ambient
+            else:  # Cooling needed
+                manual_bias = max(-0.9, temp_diff * 0.16)  # 16% per °C below ambient
+            
+            print("Manual bias =", manual_bias)
+
+            final_output = pid_output + manual_bias
+            final_output = max(min(final_output, 0.13), -1.0)
+
+            # Learn the steady-state bias when we're stable
+            # temp_error = abs(current_temp - self.setpoints.temperature)
+            # if temp_error < 0.2:  # Very close to setpoint
+            #     if self.last_stable_time is None:
+            #         self.last_stable_time = time.time()
+            #     elif time.time() - self.last_stable_time > 60:  # Stable for 1 minute
+            #         # Gradually adapt the bias toward the current output
+            #         self.steady_state_bias = 0.95 * self.steady_state_bias + 0.05 * pid_output
+            # else:
+            #     self.last_stable_time = None
+            
+            # # Apply the learned bias
+            # final_output = pid_output + self.steady_state_bias
+
+            # final_output = max(min(final_output, 0.1), -1.0)
             
             # Determine heating/cooling mode
-            if abs(pid_output) > 0.01:  # Deadband
+            if abs(final_output) > 0.0001: #0.0001:  # Deadband
                 
                 # Enable peltier system
                 self.devices.peltier_enable()
@@ -374,10 +392,10 @@ class MushroomChamberController:
                 self.devices.turn_on("internal_fan")
                 self.temp_control_state = True
                 
-                if pid_output > 0:  # Need heating
-                    self.devices.set_peltier_pwm(pid_output, "heat") 
+                if final_output > 0:  # Need heating
+                    self.devices.set_peltier_pwm(final_output, "heat") 
                 else:  # Need cooling
-                    self.devices.set_peltier_pwm(abs(pid_output), "cool")
+                    self.devices.set_peltier_pwm(abs(final_output), "cool")
 
             elif self.temp_control_state == True:
                 self.devices.peltier_disable()
@@ -387,7 +405,6 @@ class MushroomChamberController:
                 self.devices.turn_off("internal_fan")
                 self.temp_control_state = False
                 
-    
     def _check_temperature_safety(self):
         """Check and enforce temperature safety limits"""
         safety_triggered = False
@@ -407,13 +424,79 @@ class MushroomChamberController:
             safety_triggered = True
         
         return safety_triggered
+    
+    def _is_temperature_stable(self, stability_threshold=0.5, stability_duration=120):
+        """Check if temperature has been stable within threshold for duration (default: 2 minutes)"""
+        if not hasattr(self, 'current_temps') or "DHT_Sensor" not in self.current_temps:
+            return False
+        
+        current_temp = self.current_temps["DHT_Sensor"]
+        temp_error = abs(current_temp - self.setpoints.temperature)
+        
+        # Check if temperature is within threshold
+        if temp_error <= stability_threshold:
+            if self.temperature_stable_start_time is None:
+                # Start timing stability
+                self.temperature_stable_start_time = time.time()
+                print(f"TEMPERATURE: Starting stability timer - within {stability_threshold}°C of setpoint")
+            else:
+                # Check if been stable long enough
+                stable_time = time.time() - self.temperature_stable_start_time
+                if stable_time >= stability_duration:
+                    return True
+                else:
+                    remaining = (stability_duration - stable_time) / 60
+                    print(f"TEMPERATURE: Stable for {stable_time/60:.1f}min, {remaining:.1f}min remaining")
+        else:
+            # Temperature not stable - reset timer
+            if self.temperature_stable_start_time is not None:
+                print(f"TEMPERATURE: Lost stability - error: {temp_error:.2f}°C")
+            self.temperature_stable_start_time = None
+        
+        return False
 
     def _control_humidity(self):
         """Control humidity using prioritized approach: ventilation -> evaporative cooling -> natural absorption"""
         if not self.current_humidity:
             return
         
-        # Check if we're in cooldown period after natural absorption
+        if self.devices.get_state("humidifier"):
+            if self.humidifier_on_time is None:
+                self.humidifier_on_time = time.time()
+            else:
+                runtime = time.time() - self.humidifier_on_time
+                if runtime >= self.humidifier_runtime_limit:
+                    print("HUMIDITY: Humidifier reached safety timeout, cycling power to reset")
+                    self.devices.turn_off("humidifier")
+                    time.sleep(0.4)  # Give module time to reset 
+                    self.devices.turn_on("humidifier")
+                    self.humidifier_on_time = time.time()  # Reset timer
+        else:
+            # Reset timer if humidifier is off
+            self.humidifier_on_time = None
+        
+        # Check if temperature is stable first
+        if not self._is_temperature_stable():
+            if self.temperature_stable:  # Was stable, now unstable
+                print("HUMIDITY: Temperature unstable - pausing humidity control")
+                self.temperature_stable = False
+                # Turn off humidifier everything
+                self.devices.turn_off("humidifier")
+                self.vent_angle = 0
+                self.vent_fan_speed = 0
+                self.devices.set_servo_angle(0)
+                self.devices.set_pwm("intake_fan", 0)
+                self.devices.set_pwm("outflow_fan", 0)
+                self.devices.turn_off("internal_fan")
+            return
+        
+        # If here, temperature is stable
+        if not self.temperature_stable:
+            print("HUMIDITY: Temperature stable - resuming humidity control")
+            self.temperature_stable = True
+        
+        
+        # Check if in cooldown period after natural absorption
         current_time = time.time()
         if hasattr(self, 'humidity_cooldown_until') and current_time < self.humidity_cooldown_until:
             remaining = (self.humidity_cooldown_until - current_time) / 60
@@ -423,7 +506,7 @@ class MushroomChamberController:
         with self.lock:
             humidity_error = self.setpoints.humidity - self.current_humidity
             
-            if humidity_error > 50:  # Too dry -> add humidity (with hysteresis)
+            if humidity_error > 2:  # Too dry -> add humidity (with hysteresis)
                 self.devices.turn_on("humidifier")
                 self.devices.turn_on("internal_fan")  # Distribute humidity
                 # Reset all humidity control states
@@ -436,23 +519,23 @@ class MushroomChamberController:
                     delattr(self, 'humidity_cooldown_until')
                 print("HUMIDITY: Adding humidity - humidifier ON")
                 
-            elif humidity_error < -50:  # Too humid -> reduce humidity (with hysteresis)
+            elif humidity_error < -3:  # Too humid -> reduce humidity (with hysteresis)
                 self._reduce_humidity_prioritized()
                 self.humidity_control_state = True
             elif self.humidity_control_state == True:
                 # Within acceptable range
                 self.devices.turn_off("humidifier")
                 self.devices.turn_off("internal_fan")
+                self.vent_angle = 0
+                self.vent_fan_speed = 0
                 self.devices.set_servo_angle(0)
-                self.devices.turn_off("intake_fan")
-                self.devices.turn_off("outflow_fan")
+                self.devices.set_pwm("intake_fan", 0)
+                self.devices.set_pwm("outflow_fan", 0)
                 # Reset all humidity control states
                 self.humidity_override_active = False
                 self.humidity_override_start_time = None
                 self.ventilation_phase_start_time = None
                 self.humidity_control_state = False
-
-    
 
     def _reduce_humidity_prioritized(self):
         """Prioritized approach to reduce humidity with time-based switching"""
@@ -460,7 +543,7 @@ class MushroomChamberController:
         
         # Step 1: Try ventilation first (unless already in cooling phase)
         if not self.humidity_override_active:
-            # Check if we're just starting ventilation phase
+            # Check if just starting ventilation phase
             if self.ventilation_phase_start_time is None:
                 self.ventilation_phase_start_time = current_time
                 print("HUMIDITY: Starting ventilation phase to reduce humidity")
@@ -475,6 +558,11 @@ class MushroomChamberController:
                     self.humidity_override_active = True
                     self.humidity_override_start_time = current_time
                     self.ventilation_phase_start_time = None
+                    self.vent_angle = 0
+                    self.vent_fan_speed = 0
+                    self.devices.set_servo_angle(0)
+                    self.devices.set_pwm("intake_fan", 0)
+                    self.devices.set_pwm("outflow_fan", 0)
                     print("HUMIDITY: Ventilation ineffective after 2 minutes, switching to evaporative cooling")
                 else:
                     # Ventilation is working, reset timer and continue
@@ -485,7 +573,7 @@ class MushroomChamberController:
         # Step 2: Evaporative cooling phase
         if self.humidity_override_active:
             # Check if we should continue evaporative cooling
-            if current_time - self.humidity_override_start_time < 120:  # 2 minutes
+            if current_time - self.humidity_override_start_time < 180:  # 3 minutes
                 if not self._humidity_decreasing():
                     # Use peltier for cooling to condense moisture
                     if not self._check_temperature_safety():  # Only if safe
@@ -495,9 +583,11 @@ class MushroomChamberController:
                         self.devices.turn_on("water_pump")
                         self.devices.turn_off("humidifier")
                         self.devices.turn_off("internal_fan")
+                        self.vent_angle = 0
+                        self.vent_fan_speed = 0 
                         self.devices.set_servo_angle(0)
-                        self.devices.turn_off("intake_fan")
-                        self.devices.turn_off("outflow_fan")
+                        self.devices.set_pwm("intake_fan", 0)
+                        self.devices.set_pwm("outflow_fan", 0)
                         print("HUMIDITY: Active evaporative cooling")
                     else:
                         print("HUMIDITY: Evaporative cooling blocked by temperature safety")
@@ -524,7 +614,7 @@ class MushroomChamberController:
         
         # Proportional control: more humidity error = more ventilation
         # Scale from minimum (30% open) to maximum (100% open) based on humidity excess
-        max_humidity_excess = 8.0  # Consider 8% over setpoint as maximum
+        max_humidity_excess = 15.0  # Consider 15% over setpoint as maximum
         
         # Calculate vent ratio: 0.3 (30% open) to 1.0 (100% open)
         vent_ratio = 0.3 + (min(humidity_excess, max_humidity_excess) / max_humidity_excess) * 0.7
@@ -567,79 +657,70 @@ class MushroomChamberController:
         
         # Consider it decreasing if recent average is at least 0.5% lower than previous
         return recent_avg <= (previous_avg - 0.2)
-
+    
     def _control_co2(self):
-        """Control CO2 levels using ventilation with minimum opening limit"""
+        """Control CO2 levels - when above setpoint, reduce to 550ppm and maintain"""
         if not self.current_co2:
             return
         
         # If humidity control is actively managing ventilation, don't override it
         if self.humidity_override_active or self.ventilation_phase_start_time is not None:
-            print(f"CO2: Ventilation controlled by humidity system (vent_angle: {self.vent_angle}°)")
+            print(f"CO2: Ventilation controlled by humidity system (vent_angle: {self.vent_angle}�)")
             return
         
         with self.lock:
-            co2_error = self.current_co2 - self.setpoints.co2_max
+            # Check if we're in "reduction mode" (CO2 exceeded setpoint)
+            if not hasattr(self, 'co2_reduction_mode'):
+                self.co2_reduction_mode = False
             
-            if co2_error > 0:  # CO2 too high
-                # Calculate vent opening based on CO2 level with minimum 30% open
-                vent_ratio = min(1.0, co2_error / 500.0)  # Scale with error
+            # Enter reduction mode if CO2 exceeds setpoint
+            if self.current_co2 > self.setpoints.co2_max and not self.co2_reduction_mode:
+                self.co2_reduction_mode = True
+                print(f"CO2: {self.current_co2}ppm > {self.setpoints.co2_max}ppm - entering reduction mode (target: 550ppm)")
+            
+            # Control logic
+            if self.co2_reduction_mode:
+                # In reduction mode - keep reducing until we reach 550ppm
+                target_co2 = 550
+                current_error = self.current_co2 - target_co2
                 
-                # Apply minimum opening limit (70% closed max = 30% open min)
-                min_vent_ratio = 0.3  # 30% open minimum
-                vent_ratio = max(vent_ratio, min_vent_ratio)
-                
-                self.vent_angle = int(180 * vent_ratio)
-                self.vent_fan_speed = max(0.3, vent_ratio)
-                
-                self.devices.set_servo_angle(self.vent_angle)
-                self.devices.set_pwm("intake_fan", self.vent_fan_speed)
-                self.devices.set_pwm("outflow_fan", self.vent_fan_speed)
-                self.CO2_control_state = True
-
-                print(f"CO2: High CO2 ({self.current_co2} ppm), vents {vent_ratio*100:.0f}% open")
+                if current_error > 0:  # Still above 550ppm
+                    # Scale ventilation based on how much above 550ppm we are
+                    max_error = 500  # Consider 500ppm above 550 as maximum
+                    vent_ratio = min(1.0, current_error / max_error)
                     
-            else:  # CO2 within limits
-                if self.CO2_control_state:
+                    # Apply minimum opening limit (30% open minimum)
+                    min_vent_ratio = 0.3
+                    vent_ratio = max(vent_ratio, min_vent_ratio)
+                    
+                    self.vent_angle = int(180 * vent_ratio)
+                    self.vent_fan_speed = max(0.3, vent_ratio)
+                    
+                    self.devices.set_servo_angle(self.vent_angle)
+                    self.devices.set_pwm("intake_fan", self.vent_fan_speed)
+                    self.devices.set_pwm("outflow_fan", self.vent_fan_speed)
+                    
+                    print(f"CO2: Reduction mode - {self.current_co2}ppm > 550ppm (vents {vent_ratio*100:.0f}% open)")
+                else:
+                    # At or below 550ppm turn off
+                    self.vent_angle = 0
+                    self.vent_fan_speed = 0
+                    self.devices.set_servo_angle(0)
+                    self.devices.set_pwm("intake_fan", 0)
+                    self.devices.set_pwm("outflow_fan", 0)
+                    # self.CO2_control_state = False
+                    self.co2_reduction_mode = False
+                    print(f"CO2: {self.current_co2}ppm < 550ppm - exiting reduction mode")
+                    
+            else:  # Not in reduction mode
+                # Only close vents if not needed for humidity control
+                if not self.humidity_override_active:
                     self.vent_angle = 0
                     self.vent_fan_speed = 0
                     self.devices.set_servo_angle(0)
                     self.devices.turn_off("intake_fan")
                     self.devices.turn_off("outflow_fan")
-                    self.CO2_control_state = False
-                # else:
-                #     # Keep ventilation at minimum for humidity control
-                #     min_angle = 54  # 30% open (180 * 0.3)
-                #     self.vent_angle = min_angle
-                #     self.vent_fan_speed = 0.3
-                #     self.devices.set_servo_angle(min_angle)
-                #     self.devices.set_pwm("intake_fan", 0.3)
-                #     self.devices.set_pwm("outflow_fan", 0.3)
-
-    # def _control_co2(self):
-    #     """Control CO2 levels using ventilation"""
-    #     if not self.current_co2:
-    #         return
-        
-    #     with self.lock:
-    #         co2_error = self.current_co2 - self.setpoints.co2_max
-            
-    #         if co2_error > 0:  # CO2 too high
-    #             # Calculate vent opening based on CO2 level
-    #             vent_ratio = min(1.0, co2_error / 500.0)  # Scale with error    might neet to add a max(0.1...) case since fans might not work this low (might cause issues)
-    #             self.vent_angle = int(180 * vent_ratio)
-    #             self.vent_fan_speed = max(0.4,vent_ratio)
-                
-    #             self.devices.set_servo_angle(self.vent_angle)
-    #             self.devices.set_pwm("intake_fan", self.vent_fan_speed)
-    #             self.devices.set_pwm("outflow_fan", self.vent_fan_speed)
-                
-    #         else:  # CO2 within limits
-    #             self.vent_angle = 0
-    #             self.vent_fan_speed = 0
-    #             self.devices.set_servo_angle(0)
-    #             self.devices.turn_off("intake_fan")
-    #             self.devices.turn_off("outflow_fan")
+                    print(f"CO2: Normal mode - {self.current_co2}ppm <= {self.setpoints.co2_max}ppm, vents closed")
     
     def _control_lights(self):
         """Control lights based on schedule or photo mode"""
@@ -660,7 +741,7 @@ class MushroomChamberController:
                 try:
                     # Fixed colours for now, could add custom RGB, would need to extend device_control
                     self.devices.set_neopixel_color(active_schedule.colour) 
-                    self.devices.set_neopixel_brightness(active_schedule.neopixel_intensity)                                           # Might cause issue (rgb input to shedule colours is being ignored)
+                    self.devices.set_neopixel_brightness(active_schedule.neopixel_intensity)
                     # Set white LEDs
                     self.devices.set_pwm("white_leds", active_schedule.white_intensity * 100)
                     # Set UV LEDs
@@ -698,13 +779,23 @@ class MushroomChamberController:
     
     def get_control_status(self) -> Dict:
         """Get control system status"""
+        
+        if self.system_start_time is None:
+            uptime = 0
+            self.system_start_time = time.time()
+
+        elif self.system_start_time:
+            uptime = time.time() - self.system_start_time
+
         with self.lock:
             return {
                 "system_state": self.state.value,
+                'uptime_seconds': uptime,
+                'uptime': self._format_uptime(uptime),
                 "setpoints": {
                     "temperature": self.setpoints.temperature,
                     "humidity": self.setpoints.humidity,
-                    "co2_max": self.setpoints.co2_max,          #light setpoints might cause issues
+                    "co2_max": self.setpoints.co2_max,         
                     "light_schedules": [
                         {
                             "start": s.start_time.strftime("%H:%M"),
@@ -763,8 +854,6 @@ class MushroomChamberController:
     def set_light_wavelengths(self, colour: str, neopixel_intensity: float, white_intensity: float, uv_intensity: float):
         """Set manual light wavelengths and intensities"""
         with self.lock:
-            # This could override schedules or work with them
-            # For now, let's create a temporary schedule for immediate effect
             current_time = datetime.now().time()
             end_time = (datetime.now() + timedelta(hours=1)).time()
             
@@ -772,7 +861,13 @@ class MushroomChamberController:
             self.setpoints.light_schedules = [temp_schedule]
             
             logger.info(f"Light wavelengths set: Colour:{colour}, NeoPixel:{neopixel_intensity}, White:{white_intensity}, UV:{uv_intensity}")
-    
+
+    def _format_uptime(self, uptime_seconds: float) -> str:
+        """Format uptime seconds to HH:MM format"""
+        hours = int(uptime_seconds // 3600)
+        minutes = int((uptime_seconds % 3600) // 60)
+        return f"{hours}:{minutes:02d}"
+
     def trigger_photo_mode(self, duration: int = 10):
         """
         Trigger photo mode for timelapse photography
@@ -783,8 +878,9 @@ class MushroomChamberController:
             self.photo_mode_timeout = time.time() + duration
             
             # Turn on white LEDs for photography
-            self.devices.turn_on("white_leds")
+            self.devices.set_pwm("white_leds",55)
             # Add some NeoPixel fill light
+            self.devices.set_neopixel_brightness(0.35)
             self.devices.set_neopixel_color("white")
             
             logger.info(f"Photo mode activated for {duration} seconds")
@@ -818,7 +914,7 @@ class MushroomChamberController:
             
             logger.info(f"PID parameters updated: Kp={self.temp_pid.Kp}, Ki={self.temp_pid.Ki}, Kd={self.temp_pid.Kd}")
     
-    def set_system_state(self, state: str):                     #Might cause issues since I never activate the system
+    def set_system_state(self, state: str):                     
         """Change system state"""
         try:
             new_state = SystemState(state)
@@ -831,7 +927,7 @@ class MushroomChamberController:
             raise ValueError(f"Invalid system state: {state}")
 
 # Global instance
-chamber_controller = MushroomChamberController()            # Not sure why this is here yet (issues)
+chamber_controller = MushroomChamberController()  
 
 def initialize_controller():
     """Initialize and start the controller"""

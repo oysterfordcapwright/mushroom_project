@@ -31,18 +31,28 @@ def get_CO2_ppm():
     data = get_CO2_data()
     return data["co2"]
 
-'''
-try:
-    while True:
-        result = read_all()
-        if result:
-            cur_time, co2, temp, tt, ss, uh, ul = result
-            #print(f"CO2: {co2} ppm, Temp: {temp} C")
-            print(result)
-        else:
-            print("Read error")
-        time.sleep(2)
-except KeyboardInterrupt:
-    #ser.close()
-    print("Exiting")
-'''
+def disable_abc_permanently():
+    """Permanently disable ABC - survives power cycles"""
+    with connect() as ser:
+        # Command to turn off ABC (0x00 in byte3)
+        ser.write(b"\xff\x01\x79\x00\x00\x00\x00\x00\x86")
+        print("ABC permanently disabled - will remain off after power cycles")
+
+
+if __name__ == "__main__":
+
+    try:
+        disable_abc_permanently()
+        time.sleep(0.1)
+        while True:
+            result = get_CO2_data()
+            if result:
+                cur_time, co2, temp, tt, ss, uh, ul = result
+                #print(f"CO2: {co2} ppm, Temp: {temp} C")
+                print(result)
+            else:
+                print("Read error")
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print("Exiting")
+

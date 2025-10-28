@@ -6,7 +6,7 @@ from gpiozero import PWMOutputDevice, DigitalOutputDevice
 from DS18B20 import get_DS_temp
 from CO2_sensor import get_CO2_data
 from DHT22 import get_DHT22_data
-import random
+import smbus2
 import math
 
 
@@ -153,11 +153,6 @@ class DeviceController:
         power: 0.0 - 1.0 (duty cycle)
         direction: "forward" or "backward"
         """
-
-        # Both enable pins must be ON when running
-        # self.left_enable.on()
-        # self.right_enable.on()
-
         if direction == "cool":
             # Left side idle, right side drives
             self.left_pwm.value = 0.0
@@ -207,7 +202,6 @@ class DeviceController:
             raise ValueError("Brightness must be between 0.0 and 1.0")
         
         self.neopixels.brightness = brightness
-        # Re-show the current colors to apply new brightness
         self.neopixels.show()
 
 
@@ -296,7 +290,7 @@ class DeviceController:
 
         # Stop servos
         if hasattr(self, "_servo_pwm"):
-            dev.change_duty_cycle(self._angle_to_dc(0))  # go to 0°
+            dev.change_duty_cycle(self._angle_to_dc(0)) 
             time.sleep(0.5)  # give time to physically move
             self._servo_pwm.stop()
         
@@ -305,6 +299,30 @@ class DeviceController:
         self.right_pwm.close()
         self.left_enable.close()
         self.right_enable.close()
+
+def gxhtc3_read():
+    try:
+        bus.write_i2c_block_data(0x70, 0x35, [0x17])
+        time.sleep(0.001)  # Short delay after wake-up
+    
+        bus.write_i2c_block_data(0x70, 0x7C, [0xA2])
+        time.sleep(0.02) 
+        data = bus.read_i2c_block_data(0x70, 0x00, 6)
+        
+        bus.write_i2c_block_data(0x70, 0xB0, [0x98])
+        
+        # Extract and convert values
+        temp_raw = (data[0] << 8) | data[1]
+        hum_raw = (data[3] << 8) | data[4]
+        
+        temp = -45 + (175 * temp_raw / 65535.0)
+        hum = 100 * hum_raw / 65535.0
+        
+        return temp, hum
+        
+    except Exception as e:
+        print(f"GXHTC3 error: {e}")
+        return None, None
 
 
 if __name__ == "__main__":
@@ -329,20 +347,41 @@ if __name__ == "__main__":
         # Use H-bridge
         # dc.peltier_enable()
         # dc.set_peltier_pwm(1, "cool")  # forward
-        # dc.turn_on("peltier_fan")
-        # dc.turn_on("water_pump")
-        # dc.turn_on("internal_fan")
+        dc.turn_on("peltier_fan")
+        dc.turn_on("water_pump")
+        # dc.turn_on("humidifier")
+        dc.turn_on("internal_fan")
         # dc.turn_on("intake_fan")
         # dc.turn_on("outflow_fan")
         # dc.set_servo_angle(360)
         # t=0
 
+        bus = smbus2.SMBus(1)
+
         while True:
-            print("Temp:", get_DS_temp())
-            CO2_data=get_CO2_data()
-            humid_data=get_DHT22_data()
-            print("CO2 Temp:", CO2_data["temperature"])
-            print("Humid Temp:", humid_data["temperature"])
+            temperatures = get_DS_temp()
+            CO2_data = get_CO2_data()
+            humid_data = get_DHT22_data()
+            gxhtc3_temp, gxhtc3_hum = gxhtc3_read()
+            
+            print("\n" + "="*50)
+            print("SENSOR COMPARISON -", time.strftime("%H:%M:%S"))
+            print("="*50)
+            
+            print("TEMPERATURE SENSORS:")
+            print(f"  DS18B20 - Probe1...{temperatures['Probe1']:.1f}°C")
+            print(f"  DS18B20 - Probe2...{temperatures['Probe2']:.1f}°C") 
+            print(f"  DS18B20 - Probe3...{temperatures['Probe3']:.1f}°C")
+            print(f"  CO2 Sensor.........{CO2_data['temperature']:.0f}°C")
+            print(f"  DHT22..............{humid_data['temperature']-0.7:.1f}°C")
+            print(f"  GXHTC3.............{gxhtc3_temp:.1f}°C" if gxhtc3_temp else "  GXHTC3:          Failed")
+            print()
+            print("HUMIDITY SENSORS:")
+            print(f"  DHT22..............{humid_data['humidity']:.1f}%")
+            print(f"  GXHTC3.............{gxhtc3_hum:.1f}%" if gxhtc3_hum else "  GXHTC3:   Failed")
+            
+            # print("="*50)
+            
             time.sleep(2)
         #     t=t+1
             

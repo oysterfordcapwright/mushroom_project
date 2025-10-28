@@ -7,7 +7,6 @@ from mushroom_controller import initialize_controller, shutdown_controller
 
 app = create_app()
 
-# Import your routes and models after creating app to avoid circular imports
 from models import get_user_by_id
 
 @app.login_manager.user_loader
@@ -42,6 +41,4 @@ def start_threads():
 atexit.register(shutdown_controller)
 
 if __name__ == '__main__':
-    # Note: No threads started here anymore
-    # They are started by before_first_request
     app.run(host='0.0.0.0', port=8080, debug=False)

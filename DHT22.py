@@ -3,9 +3,6 @@ import board
 import adafruit_dht
 import threading
 
-# Configure the GPIO pin where your DHT22 data line is connected (pin 11 = GPIO17)
-
-# Setup once, globally
 DHT_PIN = board.D17   
 dhtDevice = adafruit_dht.DHT22(DHT_PIN)
 

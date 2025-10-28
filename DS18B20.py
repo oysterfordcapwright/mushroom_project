@@ -2,13 +2,12 @@ import os
 import glob
 import time
 
-# Base directory for 1-Wire devices
 base_dir = '/sys/bus/w1/devices/'
 
 sensor_names = {
     "28-02f3d446c2fc": "Probe1",    # Bottom Probe (cold side)
     "28-3c01f0953a0b": "Probe2",    # Top Probe (hot side)
-    "28-65b00087d215": "Probe3",    # Chamber Probe
+    "28-65b00087d215": "Probe3",    # Coil Probe
     
 } 
 

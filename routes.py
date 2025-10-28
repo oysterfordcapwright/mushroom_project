@@ -88,6 +88,7 @@ def take_photo():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
     
+# .output(output_file, vcodec="libx264")    
 @bp.route('/upload_tl')
 @admin_required
 def upload_tl():
@@ -95,9 +96,15 @@ def upload_tl():
     output_file = f"/home/luke/Videos/Timelapse/timelapse {timestamp}.mp4"
     (
         ffmpeg
-        .input("/home/luke/Pictures/Timelapse Images/*.jpg", pattern_type="glob", framerate=5)
-        .output(output_file, vcodec="libx264")
-        .run()
+        .input("/home/luke/Pictures/Timelapse Images/*.jpg", pattern_type="glob", framerate=30)
+        .output(
+                output_file, 
+                vcodec="libx264",
+                crf=28, 
+                preset="medium", 
+                pix_fmt="yuv420p" 
+            )
+        .run(quiet=True)
     )
     try:
         subprocess.run(['rclone', 'copy', output_file, current_app.config['TL_DRIVE_FOLDER']], check=True)
@@ -113,8 +120,6 @@ def timelapse_status():
     with data_lock:
         return jsonify(timelapse_data)
 
-# Placeholder routes for future functionality - all require admin access
-
 @bp.route('/toggle_tl')
 @admin_required
 def toggle_tl():
@@ -125,17 +130,12 @@ def toggle_tl():
 def restart_tl():
     return " coming soon!"
     
-@bp.route('/set_tl_rate/<int:interval>', methods=['POST'])  # Add methods if using POST
+@bp.route('/set_tl_rate/<int:interval>', methods=['POST'])  
 @admin_required
 def set_tl_rate(interval):
     """Set timelapse interval lengths"""
-    # Interval is passed directly as a parameter to function
     set_tl_interval(interval)
     return jsonify({"status": "success", "interval": interval})
-
-
-
-# New stuff
 
 # Flask
 @bp.route('/update_setpoints', methods=['POST']) 
@@ -156,11 +156,11 @@ def update_setpoints():
             chamber_controller.set_humidity(float(data["humidity"]))
             updated_params["humidity"] = data["humidity"]
             
-        if "co2_max" in data:  # Changed to co2_max
-            chamber_controller.set_co2_level(float(data["co2_max"]))  # Changed to set_co2_level
+        if "co2_max" in data: 
+            chamber_controller.set_co2_level(float(data["co2_max"])) 
             updated_params["co2_max"] = data["co2_max"]
             
-        if "light_schedules" in data:  # Changed to light_schedules
+        if "light_schedules" in data: 
             chamber_controller.set_light_schedule(data["light_schedules"])
             updated_params["light_schedules"] = len(data["light_schedules"])
 
@@ -226,12 +226,10 @@ def control_status():
 def toggle_lights():
     """Toggle lights on/off manually"""
     try:
-        # This would need to be implemented in your controller
-        # For now, return a placeholder response
         return jsonify({
             "status": "success", 
             "message": "Lights toggled",
-            "lights_on": True  # You'd track this state in your controller
+            "lights_on": True
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400

@@ -1,28 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <!-- HTML content, style section is in style.css-->
-    
-    <!-- <div class="sensor-data">
-        <div class="sensor-item">
-            <div class="sensor-value" id="ds-temp1">X °C</div>
-            <div class="sensor-value" id="ds-temp2">X °C</div>
-            <div class="sensor-value" id="ds-temp3">X °C</div>
-            <div class="sensor-label">Temperature</div>
-        </div>
-        <div class="sensor-item">
-            <div class="sensor-value" id="dht-humidity">X %</div> 
-            <div class="sensor-label">Humidity</div>
-        </div>
-        <div class="sensor-item">
-            <div class="sensor-value" id="co2-ppm">X ppm</div>
-            <div class="sensor-label">CO2 Level</div>
-        </div>
-        <div class="sensor-item">
-            <div class="sensor-value">X Days X Hours</div>
-            <div class="sensor-label">Growth Time</div>
-        </div>         
-    </div> -->
+    <!-- HTML content-->
 
      <!-- Sensor Data Display -->
     <div class="sensor-data">
@@ -213,12 +192,6 @@
             <button onclick="downloadDataLog()">Download Data Log</button>
         </div>
 
-        <!-- <button class="save-btn" id="save-button" disabled>Save Changes</button>
-
-        <div class="status-message" id="unsaved-message">You have unsaved changes</div>
-        <div class="status-message status-saved" id="saved-message">Changes saved successfully!</div>
-         -->
-
          <!-- Save Changes Button -->
         <div class="card full-width">
             <button class="save-btn" id="save-button" disabled>Save Changes</button>
@@ -279,7 +252,6 @@
                 tempData = await res.json();
 
                 // Fetch humidity sensor data
-                // debugger;
                 res = await fetch('/DHT22_sensor');
                 humidData = await res.json();
                 
@@ -310,7 +282,7 @@
                     updateLightScheduleUI();
                 }
 
-                // Update system state button (this doesn't affect user input)
+                // Update system state button 
                 const stateBtn = document.getElementById('system-state-btn');
                 if (controlData?.system_state) {
                     stateBtn.textContent = controlData.system_state === 'active' ? 'Pause System' : 'Start System';
@@ -388,6 +360,7 @@
                 document.getElementById('temp-peltier').innerText = tempData.Probe3 + "°C";
                 document.getElementById('temp-chamber').innerText = tempData.DHT_Sensor + "°C";
                 document.getElementById('dht-humidity').innerText = humidData.humidity + " %";
+                document.getElementById('system-uptime').innerText = controlData.uptime;
             }
         }
 
@@ -403,13 +376,6 @@
                     const btn = document.getElementById('system-state-btn');
                     btn.textContent = result.new_state === 'active' ? 'Pause System' : 'Start System';
                     
-                    // Handle uptime tracking
-                    if (result.new_state === 'active') {
-                        startUptimeTimer();
-                    } else {
-                        stopUptimeTimer();
-                    }
-                    
                     getControlParameters();
                 } else {
                     showErrorNotification(result.message);
@@ -419,33 +385,6 @@
                 showErrorNotification("Failed to toggle system state");
             }
         }
-
-
-        function startUptimeTimer() {
-            systemStartTime = new Date();
-            if (systemUptimeInterval) clearInterval(systemUptimeInterval);
-            
-            systemUptimeInterval = setInterval(() => {
-                if (systemStartTime) {
-                    const now = new Date();
-                    const diff = now - systemStartTime;
-                    const hours = Math.floor(diff / 3600000);
-                    const minutes = Math.floor((diff % 3600000) / 60000);
-                    document.getElementById('system-uptime').textContent = 
-                        `${hours}:${minutes.toString().padStart(2, '0')}`;
-                }
-            }, 60000); // Update every minute
-        }
-
-
-        function stopUptimeTimer() {
-            if (systemUptimeInterval) {
-                clearInterval(systemUptimeInterval);
-                systemUptimeInterval = null;
-            }
-            document.getElementById('system-uptime').textContent = '0:00';
-        }
-
 
         function updateLightScheduleUI() {
             const container = document.getElementById('current-light-schedule');
@@ -536,10 +475,6 @@
             if (confirm("Are you sure you want to clear all light schedules?")) {
                 currentLightSchedules = [];
                 updateLightScheduleUI();
-                // changedInputs.delete('light-schedule');
-                // updateSaveButtonState();
-                // document.getElementById('light-status').innerText = "All schedules cleared";
-                 // Mark as changed so user can save the empty state
                 changedInputs.add('light-schedule');
                 updateSaveButtonState();
                 document.getElementById('light-status').innerText = "All schedules cleared - click Save Changes to apply";
@@ -610,13 +545,6 @@
                 });
                 {% endif %}
             }, 2000); 
-
-            // Check initial system state for uptime tracking
-            setTimeout(() => {
-                if (controlData?.system_state === 'active') {
-                    startUptimeTimer();
-                }
-            }, 2000);
         });
 
 
@@ -668,15 +596,12 @@
              try {
                 // Handle regular input changes (temperature, humidity, CO2, timelapse)
                 changedInputs.forEach(inputId => {
-                    // Skip 'light-schedule' since it's not an input element
                     if (inputId === 'light-schedule') return;
                     
                     const input = document.getElementById(inputId);
                     originalValues[inputId] = input.value;
                     input.classList.remove('unsaved');
                 });
-
-                // Handle light schedules separately - they're already stored in originalValues
                 
                 // Clear changed inputs
                 changedInputs.clear();
@@ -719,7 +644,7 @@
 
 
         async function setSetpoints(originalValues) {
-            // Extract values from originalValues - ONLY the ones you have UI for
+            // Extract values from originalValues
             let temperature = Number(originalValues['temperature-setpoint']);
             let humidity = Number(originalValues['humidity-setpoint']);
             let co2_max = Number(originalValues['co2-setpoint']);
@@ -806,12 +731,12 @@
         
         function showErrorNotification(message) {
             console.error(message);
-            alert(message); // temporary visible feedback
+            alert(message);
         }
 
 
         async function setTimelapseInterval(intervalValue) {
-            intervalValue = Number(intervalValue); // ensure it's numeric
+            intervalValue = Number(intervalValue); 
 
             if (isNaN(intervalValue) || intervalValue <= 0) {
                 throw new Error("Invalid interval value. Must be a positive number.");
@@ -838,7 +763,7 @@
 
         async function updateImage() {
             const img = document.getElementById('webcam');
-            img.src = '/send_latest_image?t=' + new Date().getTime();  // bust cache
+            img.src = '/send_latest_image?t=' + new Date().getTime(); 
 
             document.getElementById('photo-status').innerText = "Photo updated according to time stamp"; 
         }

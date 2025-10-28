@@ -345,7 +345,7 @@ button.warning:hover {
     display: flex;
     flex-direction: column;
 }
-/* Compact parameter items */
+
 .parameter-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -370,7 +370,7 @@ button.warning:hover {
 .time-input {
     width: 80px !important;
 }
-/* Current schedule styling to match system status */
+
 .light-status {
     background: #f8f9fa;
     padding: 15px;
@@ -403,7 +403,7 @@ button.warning:hover {
 .schedule-item button:hover {
     background-color: #F57C00; /* Your hover color */
 }
-/* Make schedule form more compact */
+
 .schedule-form {
     background: #f9f9f9;
     padding: 15px;

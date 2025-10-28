@@ -2,7 +2,7 @@
 
 A Raspberry Pi-based automated environmental control system for mushroom cultivation. This project provides precise control over temperature, humidity, CO₂ levels, and lighting to create optimal fruiting conditions for various mushroom species.
 
-![AMFU in action](path/to/your/timelapse.gif) *// Add your timelapse GIF here to show mushrooms growing!*
+![AMFU in action](mushroom_results/Mushroom growth.gif) *// Add your timelapse GIF here to show mushrooms growing!*
 
 ## Project Overview
 

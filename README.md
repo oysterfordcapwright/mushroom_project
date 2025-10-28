@@ -25,8 +25,8 @@ The AMFU is a self-contained system that automates the fruiting stage of mushroo
 
 ### Documentation
 - **Component Datasheets** - Technical specifications for all hardware
-- **Test Results** - System performance validation
-- **Timelapse Examples** - Watch your mushrooms grow!
+- **Mushroom Results** - Yield after 1 week
+- **Timelapse Examples** - Watch the mushrooms grow!
 
 ## Key Features
 

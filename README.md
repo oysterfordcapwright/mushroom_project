@@ -13,11 +13,11 @@ The AMFU is a self-contained system that automates the fruiting stage of mushroo
 ### Core Software
 - **Flask Application** - Friendly web interface for system control and monitoring
 - **Component Libraries** - Python drivers for all sensors and actuators:
-  - Temperature sensors (DS18B20, DHT22)
+  - Temperature and humidity sensors (DS18B20, DHT22)
   - CO₂ sensor (MH-Z19B) 
   - Lighting control (Neopixel, custom LED circuits)
   - Actuator drivers (Peltier, fans, servos, humidifier)
-- **Control System** - Smart environmental management that prevents parameter conflicts
+- **Control System** - Smart environmental management that handles parameter conflicts
 
 ### Hardware Design
 - **CAD Models** - 3D printable enclosure components and mounting brackets

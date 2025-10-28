@@ -41,7 +41,7 @@ The AMFU is a self-contained system that automates the fruiting stage of mushroo
 - Home mushroom cultivation enthusiasts
 - Educators teaching controlled environment agriculture
 - Small-scale specialty mushroom producers
-- Anyone fascinated by the intersection of biology and technology
+- Anyone fascinated with environmental automation
 
 ---
 

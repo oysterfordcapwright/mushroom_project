@@ -1,0 +1,5 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Custom Footprints")(type "KiCad")(uri "${KIPRJMOD}/Custom Footprints.pretty")(options "")(descr ""))
+  (lib (name "Footprints")(type "KiCad")(uri "C:/Users/Luke/OneDrive - University of Cape Town/Year 4/EEE4022S - Final Project/Project Files/Circuit Designs/Proposed PCB/Footprints.pretty")(options "")(descr ""))
+)
